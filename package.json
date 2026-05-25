@@ -1,0 +1,70 @@
+{
+  "name": "strapi-plugin-cms-logs",
+  "version": "1.0.0",
+  "description": "Browse, search, and download Strapi CMS log files directly from the admin panel.",
+  "keywords": [
+    "strapi",
+    "plugin",
+    "logs",
+    "log-viewer",
+    "cms-logs"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "TenTwenty",
+    "url": "https://tentwenty.me"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    "./strapi-admin": {
+      "source": "./admin/src/index.jsx",
+      "import": "./dist/admin/index.mjs",
+      "require": "./dist/admin/index.js",
+      "default": "./dist/admin/index.js"
+    },
+    "./strapi-server": {
+      "source": "./server/src/index.js",
+      "import": "./dist/server/index.mjs",
+      "require": "./dist/server/index.js",
+      "default": "./dist/server/index.js"
+    }
+  },
+  "main": "./dist/server/index.js",
+  "module": "./dist/server/index.mjs",
+  "source": "./server/src/index.js",
+  "files": [
+    "dist/",
+    "strapi-server.js",
+    "strapi-admin.js"
+  ],
+  "scripts": {
+    "build": "strapi-plugin build",
+    "watch": "strapi-plugin watch",
+    "watch:link": "strapi-plugin watch:link",
+    "verify": "strapi-plugin verify",
+    "prepublishOnly": "npm run build && npm run verify"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@strapi/sdk-plugin": "^5.3.0",
+    "@strapi/strapi": "^5.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "peerDependencies": {
+    "@strapi/strapi": "^5.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "styled-components": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0 <=22.x.x",
+    "npm": ">=6.0.0"
+  },
+  "strapi": {
+    "name": "cms-logs",
+    "description": "Browse, search, and download Strapi CMS log files",
+    "kind": "plugin",
+    "displayName": "CMS Logs"
+  }
+}
