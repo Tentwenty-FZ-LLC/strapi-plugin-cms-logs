@@ -1,4 +1,4 @@
-# strapi-plugin-cms-logs
+# @npm_tentwenty/strapi-plugin-cms-logs
 
 A Strapi v5 admin plugin for browsing, searching, and downloading daily log files — directly from the Strapi admin panel without needing server access or SSH.
 
@@ -28,7 +28,7 @@ A Strapi v5 admin plugin for browsing, searching, and downloading daily log file
 
 ## Overview
 
-`strapi-plugin-cms-logs` adds a **Log Viewer** page to the Strapi admin panel. It reads daily log files from a configurable directory on the server and renders them with structured formatting — timestamp, log level badge, and message — all colour-coded by severity.
+`@npm_tentwenty/strapi-plugin-cms-logs` adds a **Log Viewer** page to the Strapi admin panel. It reads daily log files from a configurable directory on the server and renders them with structured formatting — timestamp, log level badge, and message — all colour-coded by severity.
 
 The plugin does **not** produce logs itself. It reads files that your existing logger (Pino, Winston, simple-node-logger, or any compatible library) writes to disk. The only requirement is that log files follow the [naming convention](#log-file-naming-convention) described below.
 
@@ -64,9 +64,9 @@ Node.js `>=18.0.0`
 ## Installation
 
 ```bash
-npm install strapi-plugin-cms-logs
+npm install @npm_tentwenty/strapi-plugin-cms-logs
 # or
-yarn add strapi-plugin-cms-logs
+yarn add @npm_tentwenty/strapi-plugin-cms-logs
 ```
 
 ---
@@ -78,7 +78,7 @@ Register the plugin in `config/plugins.js` (or `config/plugins.ts`):
 ```js
 // config/plugins.js
 module.exports = ({ env }) => ({
-  'cms-logs': {
+  'cms-logs': {    // ← the plugin ID derived from the package name, not the full npm name
     enabled: true,
     config: {
       // Optional: override the log directory here instead of via the Settings page.
@@ -87,6 +87,10 @@ module.exports = ({ env }) => ({
   },
 });
 ```
+
+> **Note:** The key `'cms-logs'` is the **plugin ID** automatically derived from the package name  
+> (`@npm_tentwenty/strapi-plugin-cms-logs` → strip scope + `strapi-plugin-` → `cms-logs`).  
+> Use `'cms-logs'` as the key everywhere Strapi expects a plugin identifier (config, permissions, services).
 
 Restart Strapi after adding this. The plugin menu entry (**CMS Logs**) and the Settings section (**Settings → CMS Logs → Configuration**) will appear after the next startup.
 

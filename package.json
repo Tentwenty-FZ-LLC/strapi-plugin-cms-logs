@@ -1,5 +1,5 @@
 {
-  "name": "strapi-plugin-cms-logs",
+  "name": "@npm_tentwenty/strapi-plugin-cms-logs",
   "version": "1.0.0",
   "description": "Browse, search, and download Strapi CMS log files directly from the admin panel.",
   "keywords": [

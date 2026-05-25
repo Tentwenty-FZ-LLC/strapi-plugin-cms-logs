@@ -298,15 +298,15 @@ var require_server = __commonJS({
   }
 });
 
-// dist/_chunks/index-YwXz-3Gd.js
-var require_index_YwXz_3Gd = __commonJS({
-  "dist/_chunks/index-YwXz-3Gd.js"(exports2) {
+// dist/_chunks/index-qezG2FQw.js
+var require_index_qezG2FQw = __commonJS({
+  "dist/_chunks/index-qezG2FQw.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
     var jsxRuntime = require("react/jsx-runtime");
     var admin = require("@strapi/strapi/admin");
     var react = require("react");
-    var index = require_index_QeeFPgQL();
+    var index = require_index_T_ONdbwh();
     var PINO_LEVELS = {
       10: "trace",
       20: "debug",
@@ -903,15 +903,15 @@ var require_index_YwXz_3Gd = __commonJS({
   }
 });
 
-// dist/_chunks/index-CdpfUDkb.js
-var require_index_CdpfUDkb = __commonJS({
-  "dist/_chunks/index-CdpfUDkb.js"(exports2) {
+// dist/_chunks/index-DhISOYZs.js
+var require_index_DhISOYZs = __commonJS({
+  "dist/_chunks/index-DhISOYZs.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
     var jsxRuntime = require("react/jsx-runtime");
     var react = require("react");
     var admin = require("@strapi/strapi/admin");
-    var index = require_index_QeeFPgQL();
+    var index = require_index_T_ONdbwh();
     var SourceBadge = ({ source }) => {
       const styles = {
         db: { background: "#dcfce7", color: "#166534", border: "1px solid #86efac" },
@@ -1188,9 +1188,9 @@ var require_en_B5dWOzJf = __commonJS({
   }
 });
 
-// dist/_chunks/index-QeeFPgQL.js
-var require_index_QeeFPgQL = __commonJS({
-  "dist/_chunks/index-QeeFPgQL.js"(exports2) {
+// dist/_chunks/index-T-ONdbwh.js
+var require_index_T_ONdbwh = __commonJS({
+  "dist/_chunks/index-T-ONdbwh.js"(exports2) {
     "use strict";
     var react = require("react");
     var jsxRuntime = require("react/jsx-runtime");
@@ -1218,7 +1218,7 @@ var require_index_QeeFPgQL = __commonJS({
         Object.entries(trad).map(([key, value]) => [`${pluginId2}.${key}`, value])
       );
     };
-    var name$1 = "strapi-plugin-cms-logs";
+    var name$1 = "@npm_tentwenty/strapi-plugin-cms-logs";
     var strapi = {
       name: "cms-logs"
     };
@@ -1226,7 +1226,7 @@ var require_index_QeeFPgQL = __commonJS({
       name: name$1,
       strapi
     };
-    var pluginId = pluginPkg.name.replace(/^(@[^-,.][\w,-]+\/|strapi-)plugin-/i, "");
+    var pluginId = pluginPkg.name.replace(/^(?:@[^/]+\/)?(?:strapi-)?plugin-/i, "");
     var Initializer = ({ setPlugin }) => {
       react.useEffect(() => {
         if (typeof setPlugin === "function") {
@@ -3213,7 +3213,7 @@ var require_index_QeeFPgQL = __commonJS({
           // Hides the sidebar link entirely for roles that lack the read permission.
           permissions: [{ action: "plugin::cms-logs.read", subject: null }],
           Component: async () => {
-            const component = await Promise.resolve().then(() => require_index_YwXz_3Gd());
+            const component = await Promise.resolve().then(() => require_index_qezG2FQw());
             return component;
           }
         });
@@ -3224,7 +3224,7 @@ var require_index_QeeFPgQL = __commonJS({
             id: `${pluginId}.settings`,
             to: pluginId,
             // Strapi prepends /settings/ — resolves to /settings/cms-logs
-            Component: async () => Promise.resolve().then(() => require_index_CdpfUDkb()),
+            Component: async () => Promise.resolve().then(() => require_index_DhISOYZs()),
             permissions: [{ action: "plugin::cms-logs.configure", subject: null }]
           }
         );
@@ -3258,7 +3258,7 @@ var require_index_QeeFPgQL = __commonJS({
 var require_admin = __commonJS({
   "dist/admin/index.js"(exports2, module2) {
     "use strict";
-    var index = require_index_QeeFPgQL();
+    var index = require_index_T_ONdbwh();
     module2.exports = index.index;
   }
 });
