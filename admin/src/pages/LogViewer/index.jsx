@@ -14,9 +14,85 @@ const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const toDateStr = (d) =>
   `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 
+// ── UI theme tokens ───────────────────────────────────────────────────────────
+// Only covers the filter bar / chrome. The log area itself stays dark in both
+// modes (intentional terminal aesthetic).
+
+const uiTokens = (isDark) => isDark ? {
+  // Buttons & inputs
+  btnBorder:        '1px solid #334155',
+  btnBg:            '#1e293b',
+  btnColor:         '#94a3b8',
+  btnBgDisabled:    '#0f172a',
+  inputBg:          '#1e293b',
+  inputColor:       '#e2e8f0',
+  // Calendar dropdown
+  dropdownBg:       '#1e293b',
+  dropdownBorder:   '1px solid #334155',
+  dropdownShadow:   '0 4px 20px rgba(0,0,0,0.40)',
+  calMonthColor:    '#e2e8f0',
+  calDayHeader:     '#64748b',
+  calDayNormal:     '#cbd5e1',
+  calDayFuture:     '#334155',
+  calTodayBg:       'rgba(73,69,255,0.18)',
+  calTodayColor:    '#818cf8',
+  calFooterBorder:  '#334155',
+  calFooterLabel:   '#64748b',
+  calTodayBtnBg:    '#0f172a',
+  calTodayBtnColor: '#94a3b8',
+  navBtnActive:     '#94a3b8',
+  navBtnDisabled:   '#334155',
+  // Misc
+  divider:          '#334155',
+  legendLabel:      '#64748b',
+  lineCount:        '#64748b',
+  clearBtn:         '#64748b',
+  // Card / layout
+  cardBorder:       '1px solid #334155',
+  cardShadow:       'none',
+  filterBarBg:      '#1a2540',
+  filterBarBorder:  '1px solid #334155',
+  rowBorder:        'rgba(255,255,255,0.05)',
+} : {
+  // Buttons & inputs
+  btnBorder:        '1px solid #e2e8f0',
+  btnBg:            '#fff',
+  btnColor:         '#475569',
+  btnBgDisabled:    '#f8fafc',
+  inputBg:          '#fff',
+  inputColor:       '#1e293b',
+  // Calendar dropdown
+  dropdownBg:       '#fff',
+  dropdownBorder:   '1px solid #e2e8f0',
+  dropdownShadow:   '0 4px 20px rgba(0,0,0,0.10)',
+  calMonthColor:    '#1e293b',
+  calDayHeader:     '#94a3b8',
+  calDayNormal:     '#334155',
+  calDayFuture:     '#cbd5e1',
+  calTodayBg:       '#eef2ff',
+  calTodayColor:    '#4945ff',
+  calFooterBorder:  '#f1f5f9',
+  calFooterLabel:   '#94a3b8',
+  calTodayBtnBg:    '#f8fafc',
+  calTodayBtnColor: '#475569',
+  navBtnActive:     '#475569',
+  navBtnDisabled:   '#cbd5e1',
+  // Misc
+  divider:          '#e2e8f0',
+  legendLabel:      '#64748b',
+  lineCount:        '#94a3b8',
+  clearBtn:         '#94a3b8',
+  // Card / layout
+  cardBorder:       '1px solid #e2e8f0',
+  cardShadow:       '0 1px 4px rgba(0,0,0,0.06)',
+  filterBarBg:      '#f8fafc',
+  filterBarBorder:  '1px solid #e2e8f0',
+  rowBorder:        'rgba(255,255,255,0.05)',
+};
+
 // ── CompactDatePicker ─────────────────────────────────────────────────────────
 
-const CompactDatePicker = ({ selectedDate, onSelect, today }) => {
+const CompactDatePicker = ({ selectedDate, onSelect, today, ui }) => {
   const [open,      setOpen]      = useState(false);
   const [viewYear,  setViewYear]  = useState(selectedDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
@@ -80,7 +156,7 @@ const CompactDatePicker = ({ selectedDate, onSelect, today }) => {
   const navBtnStyle = (enabled) => ({
     border: 'none', background: 'none', padding: '2px 8px',
     cursor: enabled ? 'pointer' : 'default',
-    color: enabled ? '#475569' : '#cbd5e1',
+    color: enabled ? ui.navBtnActive : ui.navBtnDisabled,
     fontSize: '18px', lineHeight: 1, borderRadius: '4px',
   });
 
@@ -92,39 +168,39 @@ const CompactDatePicker = ({ selectedDate, onSelect, today }) => {
         onClick={() => setOpen((o) => !o)}
         style={{
           display: 'flex', alignItems: 'center', gap: '6px',
-          border: '1px solid #e2e8f0', borderRadius: '6px',
-          padding: '6px 12px', background: '#fff', cursor: 'pointer',
-          fontSize: '13px', color: '#1e293b', fontWeight: '500',
+          border: ui.btnBorder, borderRadius: '6px',
+          padding: '6px 12px', background: ui.btnBg, cursor: 'pointer',
+          fontSize: '13px', color: ui.btnColor, fontWeight: '500',
           whiteSpace: 'nowrap', lineHeight: '1.4',
         }}
       >
         {triggerLabel}
-        <span style={{ fontSize: '9px', color: '#94a3b8', marginLeft: '2px' }}>▾</span>
+        <span style={{ fontSize: '9px', color: ui.clearBtn, marginLeft: '2px' }}>▾</span>
       </button>
 
       {/* ── Dropdown calendar ──────────────────────────────────────────────── */}
       {open && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 6px)', left: 0,
-          background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.10)', padding: '12px',
+          background: ui.dropdownBg, border: ui.dropdownBorder, borderRadius: '8px',
+          boxShadow: ui.dropdownShadow, padding: '12px',
           zIndex: 200, width: '240px',
         }}>
 
           {/* Month navigation */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <button style={navBtnStyle(canPrev)} disabled={!canPrev} onClick={() => navigate(-1)} aria-label="Previous month">&#8249;</button>
-            <span style={{ fontWeight: '600', fontSize: '13px', color: '#1e293b' }}>
+            <button style={navBtnStyle(canPrev)} disabled={!canPrev} onClick={() => navigate(-1)} aria-label="Previous month">‹</button>
+            <span style={{ fontWeight: '600', fontSize: '13px', color: ui.calMonthColor }}>
               {MONTH_NAMES[viewMonth]} {viewYear}
             </span>
-            <button style={navBtnStyle(canNext)} disabled={!canNext} onClick={() => navigate(1)} aria-label="Next month">&#8250;</button>
+            <button style={navBtnStyle(canNext)} disabled={!canNext} onClick={() => navigate(1)} aria-label="Next month">›</button>
           </div>
 
           {/* Day grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '10px' }}>
             {DAY_NAMES.map((d) => (
               <div key={d} style={{
-                textAlign: 'center', fontSize: '10px', color: '#94a3b8',
+                textAlign: 'center', fontSize: '10px', color: ui.calDayHeader,
                 padding: '3px 0', fontWeight: '600', letterSpacing: '0.02em',
               }}>
                 {d}
@@ -136,10 +212,10 @@ const CompactDatePicker = ({ selectedDate, onSelect, today }) => {
 
             {/* Day buttons */}
             {Array.from({ length: daysInMonth }).map((_, i) => {
-              const day     = i + 1;
-              const future  = isFuture(day);
-              const sel     = isSelected(day);
-              const tod     = isToday(day);
+              const day    = i + 1;
+              const future = isFuture(day);
+              const sel    = isSelected(day);
+              const tod    = isToday(day);
               return (
                 <button
                   key={day}
@@ -149,8 +225,8 @@ const CompactDatePicker = ({ selectedDate, onSelect, today }) => {
                     border: 'none', borderRadius: '4px', padding: '5px 0',
                     textAlign: 'center', fontSize: '12px',
                     cursor: future ? 'default' : 'pointer',
-                    background: sel ? '#4945ff' : (tod && !sel) ? '#eef2ff' : 'transparent',
-                    color: sel ? '#fff' : future ? '#cbd5e1' : tod ? '#4945ff' : '#334155',
+                    background: sel ? '#4945ff' : (tod && !sel) ? ui.calTodayBg : 'transparent',
+                    color: sel ? '#fff' : future ? ui.calDayFuture : tod ? ui.calTodayColor : ui.calDayNormal,
                     fontWeight: (sel || tod) ? '600' : 'normal',
                     outline: 'none', transition: 'background 0.1s',
                   }}
@@ -163,16 +239,16 @@ const CompactDatePicker = ({ selectedDate, onSelect, today }) => {
 
           {/* Footer */}
           <div style={{
-            borderTop: '1px solid #f1f5f9', paddingTop: '10px',
+            borderTop: `1px solid ${ui.calFooterBorder}`, paddingTop: '10px',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
-            <span style={{ fontSize: '10px', color: '#94a3b8' }}>Showing last 3 months</span>
+            <span style={{ fontSize: '10px', color: ui.calFooterLabel }}>Showing last 3 months</span>
             <button
               onClick={() => { onSelect(new Date(today)); setOpen(false); }}
               style={{
-                border: '1px solid #e2e8f0', borderRadius: '4px', padding: '3px 10px',
-                background: '#f8fafc', cursor: 'pointer', fontSize: '11px',
-                color: '#475569', fontWeight: '500',
+                border: ui.btnBorder, borderRadius: '4px', padding: '3px 10px',
+                background: ui.calTodayBtnBg, cursor: 'pointer', fontSize: '11px',
+                color: ui.calTodayBtnColor, fontWeight: '500',
               }}
             >
               Today
@@ -186,7 +262,8 @@ const CompactDatePicker = ({ selectedDate, onSelect, today }) => {
 
 // ── LogViewer ─────────────────────────────────────────────────────────────────
 
-const LogViewer = ({ canDownload }) => {
+const LogViewer = ({ canDownload, isDark }) => {
+  const ui    = uiTokens(isDark);
   const today = new Date();
 
   const [selectedDate, setSelectedDate] = useState(today);
@@ -259,19 +336,25 @@ const LogViewer = ({ canDownload }) => {
 
   // ── Search filter ────────────────────────────────────────────────────────
 
-  const trimmedQuery  = searchQuery.trim().toLowerCase();
-  const filteredLogs  = trimmedQuery ? logs.filter((raw) => raw.toLowerCase().includes(trimmedQuery)) : logs;
-  const isSearching   = trimmedQuery.length > 0;
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const filteredLogs = trimmedQuery ? logs.filter((raw) => raw.toLowerCase().includes(trimmedQuery)) : logs;
+  const isSearching  = trimmedQuery.length > 0;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column',
+      border: ui.cardBorder, borderRadius: '8px',
+      boxShadow: ui.cardShadow, overflow: 'hidden',
+    }}>
 
-      {/* ── Horizontal filter bar ────────────────────────────────────────── */}
+      {/* ── Filter bar ───────────────────────────────────────────────────── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '12px',
-        marginBottom: '12px', flexWrap: 'wrap',
+        padding: '10px 16px', flexWrap: 'wrap',
+        background: ui.filterBarBg,
+        borderBottom: ui.filterBarBorder,
       }}>
 
         {/* Date picker */}
@@ -279,6 +362,7 @@ const LogViewer = ({ canDownload }) => {
           selectedDate={selectedDate}
           onSelect={setSelectedDate}
           today={today}
+          ui={ui}
         />
 
         {/* Search box */}
@@ -289,9 +373,9 @@ const LogViewer = ({ canDownload }) => {
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search logs…"
             style={{
-              border: '1px solid #e2e8f0', borderRadius: '6px',
+              border: ui.btnBorder, borderRadius: '6px',
               padding: '6px 28px 6px 12px', fontSize: '13px',
-              color: '#1e293b', background: '#fff', outline: 'none',
+              color: ui.inputColor, background: ui.inputBg, outline: 'none',
               width: '220px', fontFamily: 'inherit',
             }}
           />
@@ -302,7 +386,7 @@ const LogViewer = ({ canDownload }) => {
               style={{
                 position: 'absolute', right: '8px',
                 border: 'none', background: 'none', cursor: 'pointer',
-                fontSize: '16px', color: '#94a3b8', lineHeight: 1, padding: '0',
+                fontSize: '16px', color: ui.clearBtn, lineHeight: 1, padding: '0',
               }}
             >
               &times;
@@ -310,9 +394,9 @@ const LogViewer = ({ canDownload }) => {
           )}
         </div>
 
-        {/* Line count badge */}
+        {/* Line count */}
         {!loading && hasFile && (
-          <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+          <span style={{ fontSize: '12px', color: ui.lineCount }}>
             {isSearching
               ? (filteredLogs.length.toLocaleString() + ' of ' + logs.length.toLocaleString() + ' lines')
               : truncated
@@ -321,7 +405,7 @@ const LogViewer = ({ canDownload }) => {
           </span>
         )}
 
-        {/* Level legend — pushed to right, before action buttons */}
+        {/* Level legend + action buttons — pushed to right */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {['fatal', 'error', 'warn', 'info', 'debug', 'trace'].map((lvl) => (
@@ -330,7 +414,7 @@ const LogViewer = ({ canDownload }) => {
                   width: '7px', height: '7px', borderRadius: '50%',
                   background: LEVEL_COLORS[lvl], display: 'inline-block', flexShrink: 0,
                 }} />
-                <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <span style={{ fontSize: '10px', color: ui.legendLabel, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   {lvl}
                 </span>
               </div>
@@ -338,19 +422,19 @@ const LogViewer = ({ canDownload }) => {
           </div>
 
           {/* Divider */}
-          <div style={{ width: '1px', height: '18px', background: '#e2e8f0' }} />
+          <div style={{ width: '1px', height: '18px', background: ui.divider }} />
 
           {/* Refresh */}
           <button
             onClick={() => fetchLogs(selectedDate)}
             disabled={loading}
             style={{
-              border: '1px solid #e2e8f0', borderRadius: '6px', padding: '5px 14px',
+              border: ui.btnBorder, borderRadius: '6px', padding: '5px 14px',
               cursor: loading ? 'default' : 'pointer', fontSize: '13px',
-              background: '#fff', color: '#475569', opacity: loading ? 0.6 : 1,
+              background: ui.btnBg, color: ui.btnColor, opacity: loading ? 0.6 : 1,
             }}
           >
-            &#8635; Refresh
+            ↻ Refresh
           </button>
 
           {/* Download */}
@@ -359,11 +443,11 @@ const LogViewer = ({ canDownload }) => {
               onClick={handleDownload}
               disabled={downloading || !hasFile || loading}
               style={{
-                border: '1px solid #e2e8f0', borderRadius: '6px', padding: '5px 14px',
+                border: ui.btnBorder, borderRadius: '6px', padding: '5px 14px',
                 cursor: (downloading || !hasFile || loading) ? 'default' : 'pointer',
                 fontSize: '13px',
-                background: (!hasFile || loading) ? '#f8fafc' : '#fff',
-                color: '#475569',
+                background: (!hasFile || loading) ? ui.btnBgDisabled : ui.btnBg,
+                color: ui.btnColor,
                 opacity: (!hasFile || loading) ? 0.5 : 1,
               }}
             >
@@ -374,23 +458,22 @@ const LogViewer = ({ canDownload }) => {
               disabled
               title="You don't have permission to download log files"
               style={{
-                border: '1px solid #e2e8f0', borderRadius: '6px', padding: '5px 14px',
+                border: ui.btnBorder, borderRadius: '6px', padding: '5px 14px',
                 cursor: 'not-allowed', fontSize: '13px',
-                background: '#f8fafc', color: '#94a3b8',
+                background: ui.btnBgDisabled, color: ui.clearBtn,
               }}
             >
-              Download
+              🔒 Download
             </button>
           )}
         </div>
       </div>
 
-      {/* ── Log area ─────────────────────────────────────────────────────── */}
+      {/* ── Log area — intentionally dark in both modes ───────────────────── */}
       <div
         ref={logAreaRef}
         style={{
           background: '#0f172a',
-          borderRadius: '8px',
           padding: '12px 16px',
           height: 'calc(100vh - 240px)',
           minHeight: '400px',
@@ -400,13 +483,13 @@ const LogViewer = ({ canDownload }) => {
           lineHeight: '1.7',
         }}
       >
-        {/* Truncation notice — sticky top of log area */}
+        {/* Truncation notice */}
         {!loading && truncated && (
           <div style={{
             color: '#fbbf24', fontSize: '11px', marginBottom: '10px',
             paddingBottom: '10px', borderBottom: '1px solid #1e293b',
           }}>
-            File too large — showing the last {logs.length.toLocaleString()} of {totalLines.toLocaleString()} lines.
+            ⚠ File too large — showing the last {logs.length.toLocaleString()} of {totalLines.toLocaleString()} lines.
             Use Download for the full file.
           </div>
         )}
@@ -445,11 +528,12 @@ const LogViewer = ({ canDownload }) => {
                 display: 'flex',
                 gap: '10px',
                 alignItems: 'flex-start',
-                padding: '1px 0',
+                padding: '3px 0',
                 paddingLeft: hasError ? '8px' : '0',
                 borderLeft: hasError
                   ? `2px solid ${LEVEL_COLORS[level]}`
                   : '2px solid transparent',
+                borderBottom: `1px solid ${ui.rowBorder}`,
                 background: LEVEL_BG[level],
               }}
             >
