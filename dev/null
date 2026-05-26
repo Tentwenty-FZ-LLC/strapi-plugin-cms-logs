@@ -298,15 +298,15 @@ var require_server = __commonJS({
   }
 });
 
-// dist/_chunks/index-qezG2FQw.js
-var require_index_qezG2FQw = __commonJS({
-  "dist/_chunks/index-qezG2FQw.js"(exports2) {
+// dist/_chunks/index-D0qMd0XN.js
+var require_index_D0qMd0XN = __commonJS({
+  "dist/_chunks/index-D0qMd0XN.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
     var jsxRuntime = require("react/jsx-runtime");
-    var admin = require("@strapi/strapi/admin");
     var react = require("react");
-    var index = require_index_T_ONdbwh();
+    var admin = require("@strapi/strapi/admin");
+    var index = require_index_gRYuq1iB();
     var PINO_LEVELS = {
       10: "trace",
       20: "debug",
@@ -404,7 +404,78 @@ var require_index_qezG2FQw = __commonJS({
     ];
     var DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
     var toDateStr = (d) => `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
-    var CompactDatePicker = ({ selectedDate, onSelect, today }) => {
+    var uiTokens = (isDark) => isDark ? {
+      // Buttons & inputs
+      btnBorder: "1px solid #334155",
+      btnBg: "#1e293b",
+      btnColor: "#94a3b8",
+      btnBgDisabled: "#0f172a",
+      inputBg: "#1e293b",
+      inputColor: "#e2e8f0",
+      // Calendar dropdown
+      dropdownBg: "#1e293b",
+      dropdownBorder: "1px solid #334155",
+      dropdownShadow: "0 4px 20px rgba(0,0,0,0.40)",
+      calMonthColor: "#e2e8f0",
+      calDayHeader: "#64748b",
+      calDayNormal: "#cbd5e1",
+      calDayFuture: "#334155",
+      calTodayBg: "rgba(73,69,255,0.18)",
+      calTodayColor: "#818cf8",
+      calFooterBorder: "#334155",
+      calFooterLabel: "#64748b",
+      calTodayBtnBg: "#0f172a",
+      calTodayBtnColor: "#94a3b8",
+      navBtnActive: "#94a3b8",
+      navBtnDisabled: "#334155",
+      // Misc
+      divider: "#334155",
+      legendLabel: "#64748b",
+      lineCount: "#64748b",
+      clearBtn: "#64748b",
+      // Card / layout
+      cardBorder: "1px solid #334155",
+      cardShadow: "none",
+      filterBarBg: "#1a2540",
+      filterBarBorder: "1px solid #334155",
+      rowBorder: "rgba(255,255,255,0.05)"
+    } : {
+      // Buttons & inputs
+      btnBorder: "1px solid #e2e8f0",
+      btnBg: "#fff",
+      btnColor: "#475569",
+      btnBgDisabled: "#f8fafc",
+      inputBg: "#fff",
+      inputColor: "#1e293b",
+      // Calendar dropdown
+      dropdownBg: "#fff",
+      dropdownBorder: "1px solid #e2e8f0",
+      dropdownShadow: "0 4px 20px rgba(0,0,0,0.10)",
+      calMonthColor: "#1e293b",
+      calDayHeader: "#94a3b8",
+      calDayNormal: "#334155",
+      calDayFuture: "#cbd5e1",
+      calTodayBg: "#eef2ff",
+      calTodayColor: "#4945ff",
+      calFooterBorder: "#f1f5f9",
+      calFooterLabel: "#94a3b8",
+      calTodayBtnBg: "#f8fafc",
+      calTodayBtnColor: "#475569",
+      navBtnActive: "#475569",
+      navBtnDisabled: "#cbd5e1",
+      // Misc
+      divider: "#e2e8f0",
+      legendLabel: "#64748b",
+      lineCount: "#94a3b8",
+      clearBtn: "#94a3b8",
+      // Card / layout
+      cardBorder: "1px solid #e2e8f0",
+      cardShadow: "0 1px 4px rgba(0,0,0,0.06)",
+      filterBarBg: "#f8fafc",
+      filterBarBorder: "1px solid #e2e8f0",
+      rowBorder: "rgba(255,255,255,0.05)"
+    };
+    var CompactDatePicker = ({ selectedDate, onSelect, today, ui }) => {
       const [open, setOpen] = react.useState(false);
       const [viewYear, setViewYear] = react.useState(selectedDate.getFullYear());
       const [viewMonth, setViewMonth] = react.useState(selectedDate.getMonth());
@@ -456,7 +527,7 @@ var require_index_qezG2FQw = __commonJS({
         background: "none",
         padding: "2px 8px",
         cursor: enabled ? "pointer" : "default",
-        color: enabled ? "#475569" : "#cbd5e1",
+        color: enabled ? ui.navBtnActive : ui.navBtnDisabled,
         fontSize: "18px",
         lineHeight: 1,
         borderRadius: "4px"
@@ -470,20 +541,20 @@ var require_index_qezG2FQw = __commonJS({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              border: "1px solid #e2e8f0",
+              border: ui.btnBorder,
               borderRadius: "6px",
               padding: "6px 12px",
-              background: "#fff",
+              background: ui.btnBg,
               cursor: "pointer",
               fontSize: "13px",
-              color: "#1e293b",
+              color: ui.btnColor,
               fontWeight: "500",
               whiteSpace: "nowrap",
               lineHeight: "1.4"
             },
             children: [
               triggerLabel,
-              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "9px", color: "#94a3b8", marginLeft: "2px" }, children: "\u25BE" })
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "9px", color: ui.clearBtn, marginLeft: "2px" }, children: "\u25BE" })
             ]
           }
         ),
@@ -491,17 +562,17 @@ var require_index_qezG2FQw = __commonJS({
           position: "absolute",
           top: "calc(100% + 6px)",
           left: 0,
-          background: "#fff",
-          border: "1px solid #e2e8f0",
+          background: ui.dropdownBg,
+          border: ui.dropdownBorder,
           borderRadius: "8px",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.10)",
+          boxShadow: ui.dropdownShadow,
           padding: "12px",
           zIndex: 200,
           width: "240px"
         }, children: [
           /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }, children: [
             /* @__PURE__ */ jsxRuntime.jsx("button", { style: navBtnStyle(canPrev), disabled: !canPrev, onClick: () => navigate(-1), "aria-label": "Previous month", children: "\u2039" }),
-            /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { fontWeight: "600", fontSize: "13px", color: "#1e293b" }, children: [
+            /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { fontWeight: "600", fontSize: "13px", color: ui.calMonthColor }, children: [
               MONTH_NAMES[viewMonth],
               " ",
               viewYear
@@ -512,7 +583,7 @@ var require_index_qezG2FQw = __commonJS({
             DAY_NAMES.map((d) => /* @__PURE__ */ jsxRuntime.jsx("div", { style: {
               textAlign: "center",
               fontSize: "10px",
-              color: "#94a3b8",
+              color: ui.calDayHeader,
               padding: "3px 0",
               fontWeight: "600",
               letterSpacing: "0.02em"
@@ -535,8 +606,8 @@ var require_index_qezG2FQw = __commonJS({
                     textAlign: "center",
                     fontSize: "12px",
                     cursor: future ? "default" : "pointer",
-                    background: sel ? "#4945ff" : tod && !sel ? "#eef2ff" : "transparent",
-                    color: sel ? "#fff" : future ? "#cbd5e1" : tod ? "#4945ff" : "#334155",
+                    background: sel ? "#4945ff" : tod && !sel ? ui.calTodayBg : "transparent",
+                    color: sel ? "#fff" : future ? ui.calDayFuture : tod ? ui.calTodayColor : ui.calDayNormal,
                     fontWeight: sel || tod ? "600" : "normal",
                     outline: "none",
                     transition: "background 0.1s"
@@ -548,13 +619,13 @@ var require_index_qezG2FQw = __commonJS({
             })
           ] }),
           /* @__PURE__ */ jsxRuntime.jsxs("div", { style: {
-            borderTop: "1px solid #f1f5f9",
+            borderTop: `1px solid ${ui.calFooterBorder}`,
             paddingTop: "10px",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center"
           }, children: [
-            /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "10px", color: "#94a3b8" }, children: "Showing last 3 months" }),
+            /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "10px", color: ui.calFooterLabel }, children: "Showing last 3 months" }),
             /* @__PURE__ */ jsxRuntime.jsx(
               "button",
               {
@@ -563,13 +634,13 @@ var require_index_qezG2FQw = __commonJS({
                   setOpen(false);
                 },
                 style: {
-                  border: "1px solid #e2e8f0",
+                  border: ui.btnBorder,
                   borderRadius: "4px",
                   padding: "3px 10px",
-                  background: "#f8fafc",
+                  background: ui.calTodayBtnBg,
                   cursor: "pointer",
                   fontSize: "11px",
-                  color: "#475569",
+                  color: ui.calTodayBtnColor,
                   fontWeight: "500"
                 },
                 children: "Today"
@@ -579,7 +650,8 @@ var require_index_qezG2FQw = __commonJS({
         ] })
       ] });
     };
-    var LogViewer = ({ canDownload }) => {
+    var LogViewer = ({ canDownload, isDark }) => {
+      const ui = uiTokens(isDark);
       const today = /* @__PURE__ */ new Date();
       const [selectedDate, setSelectedDate] = react.useState(today);
       const [logs, setLogs] = react.useState([]);
@@ -640,20 +712,30 @@ var require_index_qezG2FQw = __commonJS({
       const trimmedQuery = searchQuery.trim().toLowerCase();
       const filteredLogs = trimmedQuery ? logs.filter((raw) => raw.toLowerCase().includes(trimmedQuery)) : logs;
       const isSearching = trimmedQuery.length > 0;
-      return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexDirection: "column" }, children: [
+      return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: {
+        display: "flex",
+        flexDirection: "column",
+        border: ui.cardBorder,
+        borderRadius: "8px",
+        boxShadow: ui.cardShadow,
+        overflow: "hidden"
+      }, children: [
         /* @__PURE__ */ jsxRuntime.jsxs("div", { style: {
           display: "flex",
           alignItems: "center",
           gap: "12px",
-          marginBottom: "12px",
-          flexWrap: "wrap"
+          padding: "10px 16px",
+          flexWrap: "wrap",
+          background: ui.filterBarBg,
+          borderBottom: ui.filterBarBorder
         }, children: [
           /* @__PURE__ */ jsxRuntime.jsx(
             CompactDatePicker,
             {
               selectedDate,
               onSelect: setSelectedDate,
-              today
+              today,
+              ui
             }
           ),
           /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { position: "relative", display: "flex", alignItems: "center" }, children: [
@@ -665,12 +747,12 @@ var require_index_qezG2FQw = __commonJS({
                 onChange: (e) => setSearchQuery(e.target.value),
                 placeholder: "Search logs\u2026",
                 style: {
-                  border: "1px solid #e2e8f0",
+                  border: ui.btnBorder,
                   borderRadius: "6px",
                   padding: "6px 28px 6px 12px",
                   fontSize: "13px",
-                  color: "#1e293b",
-                  background: "#fff",
+                  color: ui.inputColor,
+                  background: ui.inputBg,
                   outline: "none",
                   width: "220px",
                   fontFamily: "inherit"
@@ -689,7 +771,7 @@ var require_index_qezG2FQw = __commonJS({
                   background: "none",
                   cursor: "pointer",
                   fontSize: "16px",
-                  color: "#94a3b8",
+                  color: ui.clearBtn,
                   lineHeight: 1,
                   padding: "0"
                 },
@@ -697,7 +779,7 @@ var require_index_qezG2FQw = __commonJS({
               }
             )
           ] }),
-          !loading && hasFile && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "12px", color: "#94a3b8" }, children: isSearching ? filteredLogs.length.toLocaleString() + " of " + logs.length.toLocaleString() + " lines" : truncated ? "showing last " + logs.length.toLocaleString() + " of " + totalLines.toLocaleString() + " lines" : logs.length.toLocaleString() + " line" + (logs.length !== 1 ? "s" : "") }),
+          !loading && hasFile && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "12px", color: ui.lineCount }, children: isSearching ? filteredLogs.length.toLocaleString() + " of " + logs.length.toLocaleString() + " lines" : truncated ? "showing last " + logs.length.toLocaleString() + " of " + totalLines.toLocaleString() + " lines" : logs.length.toLocaleString() + " line" + (logs.length !== 1 ? "s" : "") }),
           /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: "10px" }, children: [
             /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: "8px", alignItems: "center" }, children: ["fatal", "error", "warn", "info", "debug", "trace"].map((lvl) => /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "3px" }, children: [
               /* @__PURE__ */ jsxRuntime.jsx("span", { style: {
@@ -708,22 +790,22 @@ var require_index_qezG2FQw = __commonJS({
                 display: "inline-block",
                 flexShrink: 0
               } }),
-              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "10px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" }, children: lvl })
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "10px", color: ui.legendLabel, textTransform: "uppercase", letterSpacing: "0.04em" }, children: lvl })
             ] }, lvl)) }),
-            /* @__PURE__ */ jsxRuntime.jsx("div", { style: { width: "1px", height: "18px", background: "#e2e8f0" } }),
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: { width: "1px", height: "18px", background: ui.divider } }),
             /* @__PURE__ */ jsxRuntime.jsx(
               "button",
               {
                 onClick: () => fetchLogs(selectedDate),
                 disabled: loading,
                 style: {
-                  border: "1px solid #e2e8f0",
+                  border: ui.btnBorder,
                   borderRadius: "6px",
                   padding: "5px 14px",
                   cursor: loading ? "default" : "pointer",
                   fontSize: "13px",
-                  background: "#fff",
-                  color: "#475569",
+                  background: ui.btnBg,
+                  color: ui.btnColor,
                   opacity: loading ? 0.6 : 1
                 },
                 children: "\u21BB Refresh"
@@ -735,13 +817,13 @@ var require_index_qezG2FQw = __commonJS({
                 onClick: handleDownload,
                 disabled: downloading || !hasFile || loading,
                 style: {
-                  border: "1px solid #e2e8f0",
+                  border: ui.btnBorder,
                   borderRadius: "6px",
                   padding: "5px 14px",
                   cursor: downloading || !hasFile || loading ? "default" : "pointer",
                   fontSize: "13px",
-                  background: !hasFile || loading ? "#f8fafc" : "#fff",
-                  color: "#475569",
+                  background: !hasFile || loading ? ui.btnBgDisabled : ui.btnBg,
+                  color: ui.btnColor,
                   opacity: !hasFile || loading ? 0.5 : 1
                 },
                 children: downloading ? "\u2026" : "\u2193 Download"
@@ -752,15 +834,15 @@ var require_index_qezG2FQw = __commonJS({
                 disabled: true,
                 title: "You don't have permission to download log files",
                 style: {
-                  border: "1px solid #e2e8f0",
+                  border: ui.btnBorder,
                   borderRadius: "6px",
                   padding: "5px 14px",
                   cursor: "not-allowed",
                   fontSize: "13px",
-                  background: "#f8fafc",
-                  color: "#94a3b8"
+                  background: ui.btnBgDisabled,
+                  color: ui.clearBtn
                 },
-                children: "Download"
+                children: "\u{1F512} Download"
               }
             )
           ] })
@@ -771,7 +853,6 @@ var require_index_qezG2FQw = __commonJS({
             ref: logAreaRef,
             style: {
               background: "#0f172a",
-              borderRadius: "8px",
               padding: "12px 16px",
               height: "calc(100vh - 240px)",
               minHeight: "400px",
@@ -788,7 +869,7 @@ var require_index_qezG2FQw = __commonJS({
                 paddingBottom: "10px",
                 borderBottom: "1px solid #1e293b"
               }, children: [
-                "File too large \u2014 showing the last ",
+                "\u26A0 File too large \u2014 showing the last ",
                 logs.length.toLocaleString(),
                 " of ",
                 totalLines.toLocaleString(),
@@ -815,9 +896,10 @@ var require_index_qezG2FQw = __commonJS({
                       display: "flex",
                       gap: "10px",
                       alignItems: "flex-start",
-                      padding: "1px 0",
+                      padding: "3px 0",
                       paddingLeft: hasError ? "8px" : "0",
                       borderLeft: hasError ? `2px solid ${LEVEL_COLORS[level]}` : "2px solid transparent",
+                      borderBottom: `1px solid ${ui.rowBorder}`,
                       background: LEVEL_BG[level]
                     },
                     children: [
@@ -862,17 +944,71 @@ var require_index_qezG2FQw = __commonJS({
       read: [{ action: "plugin::cms-logs.read", subject: null }],
       download: [{ action: "plugin::cms-logs.download", subject: null }]
     };
+    var useDarkMode = () => {
+      const resolve = () => {
+        const t = window.localStorage.getItem("STRAPI_THEME") || "system";
+        if (t === "dark")
+          return true;
+        if (t === "light")
+          return false;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches;
+      };
+      const [isDark, setIsDark] = react.useState(resolve);
+      react.useEffect(() => {
+        const mq = window.matchMedia("(prefers-color-scheme: dark)");
+        const update = () => setIsDark(resolve());
+        let lastTheme = window.localStorage.getItem("STRAPI_THEME") || "system";
+        mq.addEventListener("change", update);
+        const onStorage = (e) => {
+          if (e.key === "STRAPI_THEME")
+            update();
+        };
+        window.addEventListener("storage", onStorage);
+        const pollId = window.setInterval(() => {
+          const t = window.localStorage.getItem("STRAPI_THEME") || "system";
+          if (t !== lastTheme) {
+            lastTheme = t;
+            update();
+          }
+        }, 500);
+        return () => {
+          mq.removeEventListener("change", update);
+          window.removeEventListener("storage", onStorage);
+          window.clearInterval(pollId);
+        };
+      }, []);
+      return isDark;
+    };
+    var tokens = (isDark) => isDark ? {
+      textPrimary: "#f1f5f9",
+      textMuted: "#94a3b8",
+      textLoading: "#64748b",
+      errorBg: "rgba(153,27,27,0.18)",
+      errorBorder: "1px solid #7f1d1d",
+      errorTitle: "#fca5a5",
+      errorBody: "#fecaca"
+    } : {
+      textPrimary: "#1e293b",
+      textMuted: "#64748b",
+      textLoading: "#94a3b8",
+      errorBg: "#fff3f3",
+      errorBorder: "1px solid #fecaca",
+      errorTitle: "#991b1b",
+      errorBody: "#7f1d1d"
+    };
     var App = () => {
+      const isDark = useDarkMode();
+      const t = tokens(isDark);
       const { isLoading: rbacLoading, allowedActions } = admin.useRBAC(RBAC_ACTIONS);
       const canRead = allowedActions?.canRead ?? false;
       const canDownload = allowedActions?.canDownload ?? false;
       if (rbacLoading) {
-        return /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: "32px", color: "#94a3b8", fontSize: "13px" }, children: "Checking permissions\u2026" });
+        return /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: "32px", color: t.textLoading, fontSize: "13px" }, children: "Checking permissions\u2026" });
       }
       if (!canRead) {
         return /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: "32px" }, children: /* @__PURE__ */ jsxRuntime.jsxs("div", { style: {
-          background: "#fff3f3",
-          border: "1px solid #fecaca",
+          background: t.errorBg,
+          border: t.errorBorder,
           borderRadius: "8px",
           padding: "24px",
           display: "flex",
@@ -882,8 +1018,8 @@ var require_index_qezG2FQw = __commonJS({
         }, children: [
           /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "22px", lineHeight: 1 }, children: "\u{1F512}" }),
           /* @__PURE__ */ jsxRuntime.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntime.jsx("div", { style: { fontWeight: "600", color: "#991b1b", marginBottom: "6px", fontSize: "14px" }, children: "Access denied" }),
-            /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { fontSize: "13px", color: "#7f1d1d", lineHeight: "1.6" }, children: [
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: { fontWeight: "600", color: t.errorTitle, marginBottom: "6px", fontSize: "14px" }, children: "Access denied" }),
+            /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { fontSize: "13px", color: t.errorBody, lineHeight: "1.6" }, children: [
               "You don't have permission to access the CMS Logs viewer. Ask a super admin to grant permissions under ",
               /* @__PURE__ */ jsxRuntime.jsx("em", { children: "Settings \u2192 Roles \u2192 [role] \u2192 Plugins \u2192 CMS Logs" }),
               "."
@@ -893,25 +1029,25 @@ var require_index_qezG2FQw = __commonJS({
       }
       return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { padding: "32px" }, children: [
         /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { marginBottom: "16px" }, children: [
-          /* @__PURE__ */ jsxRuntime.jsx("h1", { style: { fontSize: "20px", fontWeight: "700", color: "#1e293b", margin: 0 }, children: "CMS Log Viewer" }),
-          /* @__PURE__ */ jsxRuntime.jsx("p", { style: { fontSize: "13px", color: "#64748b", margin: "4px 0 0" }, children: "Browse and download daily Strapi log files." })
+          /* @__PURE__ */ jsxRuntime.jsx("h1", { style: { fontSize: "20px", fontWeight: "700", color: t.textPrimary, margin: 0 }, children: "CMS Log Viewer" }),
+          /* @__PURE__ */ jsxRuntime.jsx("p", { style: { fontSize: "13px", color: t.textMuted, margin: "4px 0 0" }, children: "Browse and download daily Strapi log files." })
         ] }),
-        /* @__PURE__ */ jsxRuntime.jsx(LogViewer, { canDownload })
+        /* @__PURE__ */ jsxRuntime.jsx(LogViewer, { canDownload, isDark })
       ] });
     };
     exports2.default = App;
   }
 });
 
-// dist/_chunks/index-DhISOYZs.js
-var require_index_DhISOYZs = __commonJS({
-  "dist/_chunks/index-DhISOYZs.js"(exports2) {
+// dist/_chunks/index-DO1JGTJK.js
+var require_index_DO1JGTJK = __commonJS({
+  "dist/_chunks/index-DO1JGTJK.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
     var jsxRuntime = require("react/jsx-runtime");
     var react = require("react");
     var admin = require("@strapi/strapi/admin");
-    var index = require_index_T_ONdbwh();
+    var index = require_index_gRYuq1iB();
     var SourceBadge = ({ source }) => {
       const styles = {
         db: { background: "#dcfce7", color: "#166534", border: "1px solid #86efac" },
@@ -1188,9 +1324,9 @@ var require_en_B5dWOzJf = __commonJS({
   }
 });
 
-// dist/_chunks/index-T-ONdbwh.js
-var require_index_T_ONdbwh = __commonJS({
-  "dist/_chunks/index-T-ONdbwh.js"(exports2) {
+// dist/_chunks/index-gRYuq1iB.js
+var require_index_gRYuq1iB = __commonJS({
+  "dist/_chunks/index-gRYuq1iB.js"(exports2) {
     "use strict";
     var react = require("react");
     var jsxRuntime = require("react/jsx-runtime");
@@ -3213,7 +3349,7 @@ var require_index_T_ONdbwh = __commonJS({
           // Hides the sidebar link entirely for roles that lack the read permission.
           permissions: [{ action: "plugin::cms-logs.read", subject: null }],
           Component: async () => {
-            const component = await Promise.resolve().then(() => require_index_qezG2FQw());
+            const component = await Promise.resolve().then(() => require_index_D0qMd0XN());
             return component;
           }
         });
@@ -3224,7 +3360,7 @@ var require_index_T_ONdbwh = __commonJS({
             id: `${pluginId}.settings`,
             to: pluginId,
             // Strapi prepends /settings/ — resolves to /settings/cms-logs
-            Component: async () => Promise.resolve().then(() => require_index_DhISOYZs()),
+            Component: async () => Promise.resolve().then(() => require_index_DO1JGTJK()),
             permissions: [{ action: "plugin::cms-logs.configure", subject: null }]
           }
         );
@@ -3258,7 +3394,7 @@ var require_index_T_ONdbwh = __commonJS({
 var require_admin = __commonJS({
   "dist/admin/index.js"(exports2, module2) {
     "use strict";
-    var index = require_index_T_ONdbwh();
+    var index = require_index_gRYuq1iB();
     module2.exports = index.index;
   }
 });
