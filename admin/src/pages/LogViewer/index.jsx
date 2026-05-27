@@ -15,8 +15,8 @@ const toDateStr = (d) =>
   `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 
 // ── UI theme tokens ───────────────────────────────────────────────────────────
-// Only covers the filter bar / chrome. The log area itself stays dark in both
-// modes (intentional terminal aesthetic).
+// Covers the filter bar, pod tab strip, and card chrome.
+// The log area itself stays dark in both modes (terminal aesthetic).
 
 const uiTokens = (isDark) => isDark ? {
   // Buttons & inputs
@@ -53,6 +53,13 @@ const uiTokens = (isDark) => isDark ? {
   filterBarBg:      '#1a2540',
   filterBarBorder:  '1px solid #334155',
   rowBorder:        'rgba(255,255,255,0.05)',
+  // Pod tab strip
+  tabBarBg:         '#111827',
+  tabBarBorder:     '1px solid #334155',
+  activeTabBg:      'rgba(73,69,255,0.10)',
+  activeTabColor:   '#818cf8',
+  tabColor:         '#64748b',
+  tabHoverBg:       'rgba(255,255,255,0.04)',
 } : {
   // Buttons & inputs
   btnBorder:        '1px solid #e2e8f0',
@@ -87,7 +94,14 @@ const uiTokens = (isDark) => isDark ? {
   cardShadow:       '0 1px 4px rgba(0,0,0,0.06)',
   filterBarBg:      '#f8fafc',
   filterBarBorder:  '1px solid #e2e8f0',
-  rowBorder:        'rgba(255,255,255,0.05)',
+  rowBorder:        'rgba(0,0,0,0.04)',
+  // Pod tab strip
+  tabBarBg:         '#f1f5f9',
+  tabBarBorder:     '1px solid #e2e8f0',
+  activeTabBg:      '#fff',
+  activeTabColor:   '#4945ff',
+  tabColor:         '#64748b',
+  tabHoverBg:       'rgba(0,0,0,0.03)',
 };
 
 // ── CompactDatePicker ─────────────────────────────────────────────────────────
@@ -260,20 +274,91 @@ const CompactDatePicker = ({ selectedDate, onSelect, today, ui }) => {
   );
 };
 
+// ── PodTabs ───────────────────────────────────────────────────────────────────
+// Rendered only in multi-pod mode (when pods.length > 0).
+
+const PodTabs = ({ pods, activePod, currentPod, onSelect, ui }) => {
+  const [hovered, setHovered] = useState(null);
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'stretch',
+      background: ui.tabBarBg,
+      borderBottom: ui.tabBarBorder,
+      overflowX: 'auto',
+      // Hide scrollbar but keep scrollability for many pods
+      scrollbarWidth: 'none',
+    }}>
+      {pods.map((pod) => {
+        const isActive  = pod === activePod;
+        const isCurrent = pod === currentPod;
+
+        return (
+          <button
+            key={pod}
+            onClick={() => onSelect(pod)}
+            onMouseEnter={() => setHovered(pod)}
+            onMouseLeave={() => setHovered(null)}
+            style={{
+              border: 'none',
+              borderBottom: isActive ? '2px solid #4945ff' : '2px solid transparent',
+              background: isActive
+                ? ui.activeTabBg
+                : hovered === pod ? ui.tabHoverBg : 'transparent',
+              padding: '8px 16px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: isActive ? '600' : '400',
+              color: isActive ? ui.activeTabColor : ui.tabColor,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap',
+              transition: 'background 0.1s',
+              // Offset the 2px bottom border so active tab doesn't shift layout
+              marginBottom: '-1px',
+            }}
+          >
+            {/* Green dot for the pod running on this process */}
+            {isCurrent && (
+              <span
+                title="This pod"
+                style={{
+                  width: '6px', height: '6px', borderRadius: '50%',
+                  background: '#22c55e', display: 'inline-block', flexShrink: 0,
+                }}
+              />
+            )}
+            {pod}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 // ── LogViewer ─────────────────────────────────────────────────────────────────
 
 const LogViewer = ({ canDownload, isDark }) => {
   const ui    = uiTokens(isDark);
   const today = new Date();
 
+  // ── State ─────────────────────────────────────────────────────────────────
+
   const [selectedDate, setSelectedDate] = useState(today);
-  const [logs,         setLogs]         = useState([]);
-  const [loading,      setLoading]      = useState(false);
-  const [hasFile,      setHasFile]      = useState(true);
-  const [totalLines,   setTotalLines]   = useState(0);
-  const [truncated,    setTruncated]    = useState(false);
-  const [downloading,  setDownloading]  = useState(false);
-  const [searchQuery,  setSearchQuery]  = useState('');
+
+  // Pod discovery: keyed by date string so we know when pods are fresh.
+  // { date: string | null, pods: string[], currentPod: string | null }
+  const [podData,   setPodData]   = useState({ date: null, pods: [], currentPod: null });
+  const [activePod, setActivePod] = useState(null);
+
+  const [logs,        setLogs]        = useState([]);
+  const [loading,     setLoading]     = useState(false);
+  const [hasFile,     setHasFile]     = useState(true);
+  const [totalLines,  setTotalLines]  = useState(0);
+  const [truncated,   setTruncated]   = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const logAreaRef = useRef(null);
   const { get }    = useFetchClient();
@@ -281,10 +366,11 @@ const LogViewer = ({ canDownload, isDark }) => {
   // ── Data fetching ─────────────────────────────────────────────────────────
 
   const fetchLogs = useCallback(
-    async (date) => {
+    async (date, pod) => {
       setLoading(true);
       try {
-        const res = await get(`/${pluginId}/logs?date=${toDateStr(date)}`);
+        const podParam = pod ? `&pod=${encodeURIComponent(pod)}` : '';
+        const res = await get(`/${pluginId}/logs?date=${toDateStr(date)}${podParam}`);
         setLogs(res.data.lines       || []);
         setHasFile(res.data.exists);
         setTotalLines(res.data.totalLines || 0);
@@ -299,9 +385,51 @@ const LogViewer = ({ canDownload, isDark }) => {
     [get]
   );
 
+  const fetchPods = useCallback(
+    async (date) => {
+      try {
+        const res = await get(`/${pluginId}/pods?date=${toDateStr(date)}`);
+        const pods       = res.data.pods       || [];
+        const currentPod = res.data.currentPod || null;
+        setPodData({ date: toDateStr(date), pods, currentPod });
+      } catch {
+        setPodData({ date: toDateStr(date), pods: [], currentPod: null });
+      }
+    },
+    [get]
+  );
+
+  // When the selected date changes, re-discover pods for that date.
   useEffect(() => {
-    fetchLogs(selectedDate);
-  }, [selectedDate, fetchLogs]);
+    fetchPods(selectedDate);
+  }, [selectedDate, fetchPods]);
+
+  // When pod data arrives for the current date, resolve the active pod.
+  // Keep the previous selection when the pod still exists in the new list;
+  // otherwise prefer currentPod → first pod → null (single-pod mode).
+  useEffect(() => {
+    if (podData.date !== toDateStr(selectedDate)) return; // stale response, ignore
+
+    const { pods, currentPod } = podData;
+
+    if (pods.length === 0) {
+      setActivePod(null);
+      return;
+    }
+
+    setActivePod((prev) => {
+      if (prev && pods.includes(prev)) return prev; // keep valid selection
+      return (currentPod && pods.includes(currentPod)) ? currentPod : pods[0];
+    });
+  }, [podData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch logs whenever the resolved state is stable:
+  // date matches the pod data's date (pods are fresh) AND activePod is settled.
+  useEffect(() => {
+    // Guard: don't fetch until pod discovery for this date has completed
+    if (podData.date !== toDateStr(selectedDate)) return;
+    fetchLogs(selectedDate, activePod);
+  }, [selectedDate, activePod, podData.date, fetchLogs]);
 
   // Auto-scroll to newest entry on load
   useEffect(() => {
@@ -315,7 +443,10 @@ const LogViewer = ({ canDownload, isDark }) => {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const res = await get(`/${pluginId}/logs/download?date=${toDateStr(selectedDate)}`);
+      const podParam = activePod ? `&pod=${encodeURIComponent(activePod)}` : '';
+      const res = await get(
+        `/${pluginId}/logs/download?date=${toDateStr(selectedDate)}${podParam}`
+      );
       if (!res.data.exists || !res.data.content) return;
 
       const blob = new Blob([res.data.content], { type: 'text/plain' });
@@ -342,12 +473,25 @@ const LogViewer = ({ canDownload, isDark }) => {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  const multiPod = podData.pods.length > 0;
+
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
       border: ui.cardBorder, borderRadius: '8px',
       boxShadow: ui.cardShadow, overflow: 'hidden',
     }}>
+
+      {/* ── Pod tabs — only visible in multi-pod deployments ─────────────── */}
+      {multiPod && (
+        <PodTabs
+          pods={podData.pods}
+          activePod={activePod}
+          currentPod={podData.currentPod}
+          onSelect={setActivePod}
+          ui={ui}
+        />
+      )}
 
       {/* ── Filter bar ───────────────────────────────────────────────────── */}
       <div style={{
@@ -426,7 +570,7 @@ const LogViewer = ({ canDownload, isDark }) => {
 
           {/* Refresh */}
           <button
-            onClick={() => fetchLogs(selectedDate)}
+            onClick={() => fetchLogs(selectedDate, activePod)}
             disabled={loading}
             style={{
               border: ui.btnBorder, borderRadius: '6px', padding: '5px 14px',
@@ -500,7 +644,7 @@ const LogViewer = ({ canDownload, isDark }) => {
 
         {!loading && !hasFile && (
           <div style={{ color: '#64748b', textAlign: 'center', paddingTop: '80px' }}>
-            No log file found for {toDateStr(selectedDate)}
+            No log file found for {toDateStr(selectedDate)}{activePod ? ` (${activePod})` : ''}
           </div>
         )}
 

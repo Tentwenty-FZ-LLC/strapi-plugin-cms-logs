@@ -12,10 +12,16 @@ A Strapi v5 admin plugin for browsing, searching, and downloading daily log file
 - [Installation](#installation)
 - [Plugin Configuration](#plugin-configuration)
 - [Setting Up File Logging in Strapi](#setting-up-file-logging-in-strapi)
-  - [Option A — simple-node-logger (recommended)](#option-a--simple-node-logger-recommended)
-  - [Option B — Pino (Strapi's built-in logger)](#option-b--pino-strapirsquos-built-in-logger)
-  - [Option C — Winston](#option-c--winston)
+  - [Option A — Winston (recommended)](#option-a--winston-recommended)
+  - [Option B — simple-node-logger](#option-b--simple-node-logger)
+  - [Option C — Pino (Strapi's built-in logger)](#option-c--pino-strapirsquos-built-in-logger)
 - [Log File Naming Convention](#log-file-naming-convention)
+- [Multi-Pod Deployments](#multi-pod-deployments)
+  - [How It Works](#how-it-works)
+  - [Setting POD_NAME](#setting-pod_name)
+  - [Shared Storage Requirement](#shared-storage-requirement)
+  - [Updating Your Logger for Multi-Pod](#updating-your-logger-for-multi-pod)
+  - [Pod Tab UI](#pod-tab-ui)
 - [What Is Visible in the Log Viewer](#what-is-visible-in-the-log-viewer)
   - [Log Levels](#log-levels)
   - [Supported Log Formats](#supported-log-formats)
@@ -45,7 +51,8 @@ The plugin does **not** produce logs itself. It reads files that your existing l
 | **Download** | Download the raw `.log` file for any day |
 | **RBAC** | Three separate permissions: Read, Download, Configure |
 | **Configurable settings** | Log directory and max-lines limit stored in the Strapi DB |
-| **Multi-format parsing** | Supports simple-node-logger, Pino (pretty + JSON), Winston, and generic formats |
+| **Multi-format parsing** | Supports Winston, simple-node-logger, Pino (pretty + JSON), and generic formats |
+| **Multi-pod support** | Pod tab strip lets you switch between per-pod logs in Kubernetes / multi-replica deployments |
 
 ---
 
@@ -104,14 +111,14 @@ The plugin reads log files from disk. Out of the box, Strapi only writes logs to
 
 ---
 
-### Option A — simple-node-logger (recommended)
+### Option A — Winston (recommended)
 
-`simple-node-logger` produces the format this plugin parses most accurately (full date + time + level).
+Winston with `winston-daily-rotate-file` is the recommended approach. It handles daily log rotation, retention, and multi-pod filename prefixing natively through a single `DailyRotateFile` transport — no manual date-stamping in application code required.
 
-**1. Install the package**
+**1. Install packages**
 
 ```bash
-npm install simple-node-logger
+npm install winston winston-daily-rotate-file
 ```
 
 **2. Create `config/logger.js`**
@@ -120,30 +127,47 @@ npm install simple-node-logger
 // config/logger.js
 'use strict';
 
-const path = require('path');
-const fs   = require('fs');
-const SimpleNodeLogger = require('simple-node-logger');
+const path    = require('path');
+const fs      = require('fs');
+const winston = require('winston');
+require('winston-daily-rotate-file');
 
-function createDailyLogger() {
-  const now    = new Date();
-  const year   = now.getFullYear();
-  const month  = String(now.getMonth() + 1).padStart(2, '0');
-  const day    = String(now.getDate()).padStart(2, '0');
+const logBase   = process.env.LOG_DIR || 'public/logs';
+const yearDir   = path.join(process.cwd(), logBase, `strapi_${new Date().getFullYear()}`);
 
-  const logBase = process.env.LOG_DIR || 'public/logs';
-  const yearDir = path.join(process.cwd(), logBase, `strapi_${year}`);
+fs.mkdirSync(yearDir, { recursive: true });
 
-  // Ensure the directory exists before writing
-  fs.mkdirSync(yearDir, { recursive: true });
+// Multi-pod: prefix the filename with POD_NAME when set.
+// Falls back to the classic "strapi_log_%DATE%.log" in single-pod mode.
+const podName     = process.env.POD_NAME;
+const logFilename = podName
+  ? `${podName}_strapi_log_%DATE%.log`
+  : 'strapi_log_%DATE%.log';
 
-  return SimpleNodeLogger.createSimpleLogger({
-    logFilePath:     path.join(yearDir, `strapi_log_${year}.${month}.${day}.log`),
-    timestampFormat: 'YYYY-MM-DD HH:mm:ss.SSS',
-    level:           process.env.LOG_LEVEL || 'info',
-  });
-}
+const transport = new winston.transports.DailyRotateFile({
+  dirname:       yearDir,
+  filename:      logFilename,
+  datePattern:   'YYYY.MM.DD',
+  zippedArchive: false,
+  maxFiles:      '90d',
+  createSymlink: false,
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.errors({ stack: true }),
+    winston.format.printf(({ timestamp, level, message, stack }) => {
+      const base = `${timestamp} [${level.toUpperCase()}]: ${message}`;
+      return stack ? `${base}\n${stack}` : base;
+    })
+  ),
+});
 
-module.exports = createDailyLogger();
+module.exports = winston.createLogger({
+  level:      process.env.LOG_LEVEL || 'info',
+  transports: [
+    new winston.transports.Console({ format: winston.format.simple() }),
+    transport,
+  ],
+});
 ```
 
 **3. Wire the logger into Strapi**
@@ -172,7 +196,57 @@ strapi.log.error('Payment failed', err);
 
 ---
 
-### Option B — Pino (Strapi's built-in logger)
+### Option B — simple-node-logger
+
+`simple-node-logger` produces the format this plugin parses most accurately (full date + time + level). It does not support automatic daily rotation — a new logger instance must be created each day, which suits long-running processes that restart daily (e.g. scheduled restart via PM2).
+
+**1. Install the package**
+
+```bash
+npm install simple-node-logger
+```
+
+**2. Create `config/logger.js`**
+
+```js
+// config/logger.js
+'use strict';
+
+const path = require('path');
+const fs   = require('fs');
+const SimpleNodeLogger = require('simple-node-logger');
+
+function createDailyLogger() {
+  const now   = new Date();
+  const year  = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day   = String(now.getDate()).padStart(2, '0');
+
+  const logBase = process.env.LOG_DIR || 'public/logs';
+  const yearDir = path.join(process.cwd(), logBase, `strapi_${year}`);
+
+  fs.mkdirSync(yearDir, { recursive: true });
+
+  // Multi-pod: prefix the filename with POD_NAME when set
+  const podPrefix = process.env.POD_NAME ? `${process.env.POD_NAME}_` : '';
+
+  return SimpleNodeLogger.createSimpleLogger({
+    logFilePath:     path.join(yearDir, `${podPrefix}strapi_log_${year}.${month}.${day}.log`),
+    timestampFormat: 'YYYY-MM-DD HH:mm:ss.SSS',
+    level:           process.env.LOG_LEVEL || 'info',
+  });
+}
+
+module.exports = createDailyLogger();
+```
+
+**3. Wire the logger into Strapi** (same as Option A, step 3)
+
+**4. Use it anywhere in your Strapi code** (same as Option A, step 4)
+
+---
+
+### Option C — Pino (Strapi's built-in logger)
 
 Strapi v5 uses [Pino](https://getpino.io/) internally. You can add a file transport that writes JSON-formatted log lines alongside the default stdout stream.
 
@@ -192,10 +266,12 @@ const path = require('path');
 const fs   = require('fs');
 
 const logBase = process.env.LOG_DIR || 'public/logs';
-const year    = new Date().getFullYear();
-const yearDir = path.join(process.cwd(), logBase, `strapi_${year}`);
+const yearDir = path.join(process.cwd(), logBase, `strapi_${new Date().getFullYear()}`);
 
 fs.mkdirSync(yearDir, { recursive: true });
+
+// Multi-pod: prefix the filename with POD_NAME when set
+const podPrefix = process.env.POD_NAME ? `${process.env.POD_NAME}_` : '';
 
 module.exports = {
   // Keep Strapi's default pretty-printed console output
@@ -208,10 +284,10 @@ module.exports = {
     {
       target: 'pino-roll',
       options: {
-        file:      path.join(yearDir, 'strapi_log_.log'),
-        frequency: 'daily',
+        file:       path.join(yearDir, `${podPrefix}strapi_log_.log`),
+        frequency:  'daily',
         dateFormat: 'YYYY.MM.DD',
-        // This produces: strapi_log_2026.05.25.log  ✔
+        // Produces: [pod-1_]strapi_log_2026.05.25.log  ✔
         mkdir: true,
       },
     },
@@ -222,69 +298,15 @@ module.exports = {
 
 > **Note:** Pino JSON lines are fully supported by the viewer. Each line is parsed as `{"level":30,"time":1716624225000,"msg":"..."}` and rendered with the correct timestamp and level badge.
 
----
-
-### Option C — Winston
-
-**1. Install packages**
-
-```bash
-npm install winston winston-daily-rotate-file
-```
-
-**2. Create `config/logger.js`**
-
-```js
-// config/logger.js
-'use strict';
-
-const path    = require('path');
-const winston = require('winston');
-require('winston-daily-rotate-file');
-
-const logBase = process.env.LOG_DIR || 'public/logs';
-
-const transport = new winston.transports.DailyRotateFile({
-  dirname:         path.join(process.cwd(), logBase, 'strapi_%Y'),
-  filename:        'strapi_log_%DATE%.log',
-  datePattern:     'YYYY.MM.DD',
-  zippedArchive:   false,
-  maxFiles:        '90d',
-  createSymlink:   false,
-  format: winston.format.combine(
-    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    winston.format.printf(({ timestamp, level, message }) =>
-      `${timestamp} [${level.toUpperCase()}]: ${message}`
-    )
-  ),
-});
-
-module.exports = winston.createLogger({
-  level:       process.env.LOG_LEVEL || 'info',
-  transports:  [
-    new winston.transports.Console({ format: winston.format.simple() }),
-    transport,
-  ],
-});
-```
-
-**3. Wire it into Strapi** (same as Option A, step 3)
-
-```js
-// config/server.js
-const logger = require('./logger');
-module.exports = ({ env }) => ({
-  host: env('HOST', '0.0.0.0'),
-  port: env.int('PORT', 1337),
-  logger,
-});
-```
+**3. Wire the logger into Strapi** (same as Option A, step 3)
 
 ---
 
 ## Log File Naming Convention
 
-The plugin resolves log files using this exact path pattern:
+The plugin resolves log files using one of two filename patterns depending on whether `POD_NAME` is set:
+
+### Single-pod (default)
 
 ```
 <LOG_DIR>/strapi_<YYYY>/strapi_log_<YYYY.MM.DD>.log
@@ -296,7 +318,7 @@ The plugin resolves log files using this exact path pattern:
 | `strapi_<YYYY>` | `strapi_2026` | Year sub-folder, created automatically by your logger |
 | `strapi_log_<YYYY.MM.DD>.log` | `strapi_log_2026.05.25.log` | One file per day |
 
-**Full example path:**
+**Directory layout:**
 
 ```
 <project-root>/
@@ -308,7 +330,137 @@ The plugin resolves log files using this exact path pattern:
             └── strapi_log_2026.05.25.log
 ```
 
-> If the file for the selected day does not exist, the viewer shows "No log file found for YYYY.MM.DD".
+### Multi-pod
+
+```
+<LOG_DIR>/strapi_<YYYY>/<POD_NAME>_strapi_log_<YYYY.MM.DD>.log
+```
+
+**Directory layout:**
+
+```
+<project-root>/
+└── public/
+    └── logs/
+        └── strapi_2026/
+            ├── pod-1_strapi_log_2026.05.25.log
+            ├── pod-2_strapi_log_2026.05.25.log
+            └── pod-3_strapi_log_2026.05.25.log
+```
+
+> The plugin scans for both patterns. If pod-prefixed files are found for the selected date, the pod tab strip is shown. If only plain files exist, the viewer operates in single-pod mode — fully backward compatible.
+
+---
+
+## Multi-Pod Deployments
+
+### How It Works
+
+Each pod in a multi-replica deployment sets a unique `POD_NAME` environment variable. The logger reads this value at startup and prefixes every log filename it writes. Because all pods write to the **same mounted volume**, the admin panel (which runs on one pod) can read all pods' files through a single log directory.
+
+The plugin's log-viewer backend scans the log directory for the selected date, extracts pod names from any `<pod>_strapi_log_<date>.log` filenames it finds, and returns them to the frontend. The frontend then renders a **pod tab strip** above the filter bar so you can switch between pods instantly without leaving the page.
+
+---
+
+### Setting POD_NAME
+
+#### Kubernetes (recommended)
+
+Use the [Downward API](https://kubernetes.io/docs/concepts/workloads/pods/downward-api/) to inject the pod's own name automatically — no manual configuration per-replica needed:
+
+```yaml
+# deployment.yaml
+spec:
+  containers:
+    - name: strapi
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name   # e.g. "strapi-deploy-5d9f8b-xk2p7"
+        - name: LOG_DIR
+          value: /app/logs
+```
+
+Each replica receives a unique `POD_NAME` matching its Kubernetes pod name. Log files will be named e.g. `strapi-deploy-5d9f8b-xk2p7_strapi_log_2026.05.27.log`.
+
+#### Docker Compose
+
+Assign a stable, distinct name to each service replica:
+
+```yaml
+# docker-compose.yml
+services:
+  strapi-1:
+    image: your-strapi-image
+    environment:
+      POD_NAME: strapi-1
+      LOG_DIR: /app/logs
+    volumes:
+      - shared-logs:/app/logs
+
+  strapi-2:
+    image: your-strapi-image
+    environment:
+      POD_NAME: strapi-2
+      LOG_DIR: /app/logs
+    volumes:
+      - shared-logs:/app/logs
+
+volumes:
+  shared-logs:
+```
+
+#### Single-pod / local development
+
+Leave `POD_NAME` unset. The logger writes plain `strapi_log_YYYY.MM.DD.log` files and no tab strip is shown — behaviour is identical to a fresh install.
+
+---
+
+### Shared Storage Requirement
+
+All pods must write to the **same log directory**. The admin panel reads files through the Strapi process it is running on, so it can only see files that are accessible from that pod's filesystem.
+
+Typical options:
+
+| Setup | Solution |
+|---|---|
+| Kubernetes | `PersistentVolumeClaim` with `ReadWriteMany` access mode (e.g. NFS, EFS, Azure Files) |
+| Docker Compose | Named volume shared across service replicas (as shown above) |
+| Single server | Not required — all processes share the same filesystem |
+
+> **Note:** If pods write to separate volumes, the admin panel running on pod A will only see pod A's logs. Shared storage is required for cross-pod visibility.
+
+---
+
+### Updating Your Logger for Multi-Pod
+
+All three logger options shown in [Setting Up File Logging](#setting-up-file-logging-in-strapi) already include the `POD_NAME` prefix logic. With Winston (Option A) the pattern is the cleanest since `winston-daily-rotate-file` accepts the full filename template directly:
+
+```js
+const podPrefix = process.env.POD_NAME ? `${process.env.POD_NAME}_` : '';
+// then use podPrefix when building the filename
+```
+
+No restart-time wiring is needed beyond setting the env var — the filename is computed once at process startup from `process.env.POD_NAME`.
+
+**Pod names must only contain word characters, hyphens, and dots** (`[A-Za-z0-9_.-]`). Kubernetes pod names satisfy this by default. Spaces or special characters will be rejected by the plugin's input validation.
+
+---
+
+### Pod Tab UI
+
+When the Log Viewer detects pod-prefixed files for the selected date:
+
+- A **tab strip** appears at the top of the log card — one tab per pod found
+- The tab strip auto-selects the **current pod** (the one the admin panel is running on, identified by matching `POD_NAME`) — highlighted with a **green dot** (●)
+- If the current pod has no logs for that date, the first alphabetical pod is selected instead
+- Clicking a tab switches the view to that pod's log file immediately
+- If a pod wrote no logs on the selected date, its tab is simply absent for that date
+- Switching dates re-discovers pods for the new date automatically — tabs update without a page reload
+- The **Download** button always downloads the currently active pod's log file, named with the pod prefix
+
+In single-pod mode (no `POD_NAME` set, or no pod-prefixed files found), the tab strip is hidden entirely and the viewer behaves exactly as before.
 
 ---
 
@@ -393,8 +545,8 @@ After installing and enabling the plugin, you must grant permissions to the rele
 
 | Permission | What it allows |
 |---|---|
-| **Read Logs** | Open the Log Viewer page and browse log files |
-| **Download Logs** | Download the raw `.log` file for a selected day |
+| **Read Logs** | Open the Log Viewer page and browse log files (including pod tabs) |
+| **Download Logs** | Download the raw `.log` file for a selected day and pod |
 | **Configure Log Viewer** | Access *Settings → CMS Logs → Configuration* and change log directory / max lines |
 
 > Super Admins have all permissions by default. All other roles start with no permissions.
@@ -419,7 +571,7 @@ Clear the field and save to remove the DB override and fall back to the env vari
 
 ### Max Lines in Viewer
 
-Maximum number of log lines displayed per day (range: 100–10 000, default: 1 000).
+Maximum number of log lines displayed per day per pod (range: 100–10 000, default: 1 000).
 
 When a file exceeds this limit, the viewer shows the **most recent** N lines and displays a banner:
 
@@ -433,9 +585,13 @@ The **Download** button always fetches the complete untruncated file regardless 
 
 Navigate to **CMS Logs** in the left sidebar (requires *Read Logs* permission).
 
+### Pod tabs
+
+In multi-pod deployments a tab strip appears at the top of the log card. Click any tab to switch to that pod's log file. The tab with a green dot (●) is the pod the current admin session is connected to. Tabs update automatically when you change the date.
+
 ### Date picker
 
-Click the date button at the top left. A compact calendar opens, allowing you to pick any day within the **last 3 months**. Future dates are disabled. The **Today** shortcut jumps back to the current day immediately.
+Click the date button in the filter bar. A compact calendar opens, allowing you to pick any day within the **last 3 months**. Future dates are disabled. The **Today** shortcut jumps back to the current day immediately.
 
 ### Search
 
@@ -447,7 +603,7 @@ Click **↻ Refresh** to re-fetch the log file from the server without navigatin
 
 ### Download
 
-Click **↓ Download** to save the full raw log file for the selected day to your local machine (requires *Download Logs* permission). The download is not affected by the Max Lines setting.
+Click **↓ Download** to save the full raw log file for the selected day and pod to your local machine (requires *Download Logs* permission). The download is not affected by the Max Lines setting. The saved filename includes the pod prefix when in multi-pod mode (e.g. `pod-1_strapi_log_2026.05.27.log`).
 
 ---
 
@@ -455,11 +611,32 @@ Click **↓ Download** to save the full raw log file for the selected day to you
 
 ### "No log file found for YYYY.MM.DD"
 
-The file `<LOG_DIR>/strapi_<YYYY>/strapi_log_<YYYY.MM.DD>.log` does not exist on the server.
+The expected file does not exist on the server for the selected date (and pod, in multi-pod mode).
 
-- Check that your logger is actually writing to disk (verify the file exists via SSH or your hosting file manager).
+- Verify the file exists via SSH or your hosting file manager.
 - Confirm the **Log Directory** in Settings matches the path your logger writes to.
 - Make sure the date format used by your logger matches `YYYY.MM.DD` (dots, not dashes).
+- In multi-pod mode: confirm the active pod's log file exists with the correct `<POD_NAME>_` prefix.
+
+### Pod tabs do not appear
+
+The tab strip only shows when pod-prefixed files (`<pod>_strapi_log_<date>.log`) are found in the log directory for the selected date.
+
+- Confirm `POD_NAME` is set in the environment of each pod.
+- Check that your logger template includes the `podPrefix` variable (see [Updating Your Logger for Multi-Pod](#updating-your-logger-for-multi-pod)).
+- Verify the log directory is a **shared volume** accessible to the pod running the admin panel.
+- Select a date that has existing log files — tabs will not appear for dates with no pod-prefixed files.
+
+### Logs from only one pod are visible
+
+All pods must write to the **same mounted filesystem path**. If pods use separate volumes, the admin panel on pod A only sees pod A's files.
+
+- In Kubernetes: use a `ReadWriteMany` PVC (NFS, EFS, Azure Files, etc.) mounted at the same path in every pod.
+- In Docker Compose: use a single named volume shared across all replicas.
+
+### The green dot (●) does not appear on any tab
+
+The green dot marks the pod whose `POD_NAME` matches `currentPod` returned by the server. This requires that `POD_NAME` is set on the **pod running the admin panel** (the one handling the HTTP request for the admin UI), not just the worker pods.
 
 ### "Failed to load settings. Check that you have the Configure permission."
 

@@ -6,6 +6,14 @@ const perm = (action) => ({
 module.exports = {
   type: 'admin',
   routes: [
+    // ── Pod discovery ─────────────────────────────────────────────────────
+    {
+      method: 'GET',
+      path: '/pods',
+      handler: 'strapi-logs.getPods',
+      config: { policies: [perm('plugin::cms-logs.read')] },
+    },
+
     // ── Log viewer ────────────────────────────────────────────────────────
     {
       method: 'GET',
