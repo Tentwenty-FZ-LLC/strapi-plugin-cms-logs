@@ -132,7 +132,7 @@ const fs      = require('fs');
 const winston = require('winston');
 require('winston-daily-rotate-file');
 
-const logBase   = process.env.LOG_DIR || 'public/logs';
+const logBase   = process.env.LOG_DIR || 'logs';
 const yearDir   = path.join(process.cwd(), logBase, `strapi_${new Date().getFullYear()}`);
 
 fs.mkdirSync(yearDir, { recursive: true });
@@ -222,7 +222,7 @@ function createDailyLogger() {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day   = String(now.getDate()).padStart(2, '0');
 
-  const logBase = process.env.LOG_DIR || 'public/logs';
+  const logBase = process.env.LOG_DIR || 'logs';
   const yearDir = path.join(process.cwd(), logBase, `strapi_${year}`);
 
   fs.mkdirSync(yearDir, { recursive: true });
@@ -265,7 +265,7 @@ npm install pino-roll
 const path = require('path');
 const fs   = require('fs');
 
-const logBase = process.env.LOG_DIR || 'public/logs';
+const logBase = process.env.LOG_DIR || 'logs';
 const yearDir = path.join(process.cwd(), logBase, `strapi_${new Date().getFullYear()}`);
 
 fs.mkdirSync(yearDir, { recursive: true });
@@ -314,7 +314,7 @@ The plugin resolves log files using one of two filename patterns depending on wh
 
 | Part | Example | Notes |
 |---|---|---|
-| `LOG_DIR` | `public/logs` | Configurable — see [Plugin Settings](#plugin-settings) |
+| `LOG_DIR` | `logs` | Configurable — see [Plugin Settings](#plugin-settings) |
 | `strapi_<YYYY>` | `strapi_2026` | Year sub-folder, created automatically by your logger |
 | `strapi_log_<YYYY.MM.DD>.log` | `strapi_log_2026.05.25.log` | One file per day |
 
@@ -322,12 +322,11 @@ The plugin resolves log files using one of two filename patterns depending on wh
 
 ```
 <project-root>/
-└── public/
-    └── logs/
-        └── strapi_2026/
-            ├── strapi_log_2026.05.23.log
-            ├── strapi_log_2026.05.24.log
-            └── strapi_log_2026.05.25.log
+└── logs/
+    └── strapi_2026/
+        ├── strapi_log_2026.05.23.log
+        ├── strapi_log_2026.05.24.log
+        └── strapi_log_2026.05.25.log
 ```
 
 ### Multi-pod
@@ -340,12 +339,11 @@ The plugin resolves log files using one of two filename patterns depending on wh
 
 ```
 <project-root>/
-└── public/
-    └── logs/
-        └── strapi_2026/
-            ├── pod-1_strapi_log_2026.05.25.log
-            ├── pod-2_strapi_log_2026.05.25.log
-            └── pod-3_strapi_log_2026.05.25.log
+└── logs/
+    └── strapi_2026/
+        ├── pod-1_strapi_log_2026.05.25.log
+        ├── pod-2_strapi_log_2026.05.25.log
+        └── pod-3_strapi_log_2026.05.25.log
 ```
 
 > The plugin scans for both patterns. If pod-prefixed files are found for the selected date, the pod tab strip is shown. If only plain files exist, the viewer operates in single-pod mode — fully backward compatible.
@@ -565,7 +563,7 @@ The base folder where log files are stored, relative to the Strapi project root.
 |---|---|---|
 | 1 — highest | DB (this Settings page) | `storage/logs` |
 | 2 | `LOG_DIR` environment variable | `LOG_DIR=storage/logs` in `.env` |
-| 3 — lowest | Built-in default | `public/logs` |
+| 3 — lowest | Built-in default | `logs` |
 
 Clear the field and save to remove the DB override and fall back to the env variable or default.
 
