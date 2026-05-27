@@ -57,6 +57,14 @@
     "react-dom": "^18.3.1",
     "styled-components": "^6.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Tentwenty-FZ-LLC/strapi-plugin-cms-logs.git"
+  },
+  "homepage": "https://github.com/Tentwenty-FZ-LLC/strapi-plugin-cms-logs#readme",
+  "bugs": {
+    "url": "https://github.com/Tentwenty-FZ-LLC/strapi-plugin-cms-logs/issues"
+  },
   "publishConfig": {
     "access": "public"
   },
