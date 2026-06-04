@@ -106,7 +106,7 @@ const uiTokens = (isDark) => isDark ? {
 
 // ── CompactDatePicker ─────────────────────────────────────────────────────────
 
-const CompactDatePicker = ({ selectedDate, onSelect, today, ui }) => {
+const CompactDatePicker = ({ selectedDate, onSelect, today, ui, monthsBack = 3 }) => {
   const [open,      setOpen]      = useState(false);
   const [viewYear,  setViewYear]  = useState(selectedDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
@@ -130,8 +130,8 @@ const CompactDatePicker = ({ selectedDate, onSelect, today, ui }) => {
     return () => document.removeEventListener('mousedown', onDown);
   }, [open]);
 
-  // Navigation bounds: allow up to 2 months back (3 months total incl. current)
-  const minMonth   = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+  // Navigation bounds: monthsBack months total (including current month)
+  const minMonth   = new Date(today.getFullYear(), today.getMonth() - (monthsBack - 1), 1);
   const canPrev    = new Date(viewYear, viewMonth - 1, 1) >= minMonth;
   const canNext    = new Date(viewYear, viewMonth + 1, 1) <= new Date(today.getFullYear(), today.getMonth(), 1);
 
@@ -256,7 +256,7 @@ const CompactDatePicker = ({ selectedDate, onSelect, today, ui }) => {
             borderTop: `1px solid ${ui.calFooterBorder}`, paddingTop: '10px',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
-            <span style={{ fontSize: '10px', color: ui.calFooterLabel }}>Showing last 3 months</span>
+            <span style={{ fontSize: '10px', color: ui.calFooterLabel }}>Showing last {monthsBack} month{monthsBack !== 1 ? 's' : ''}</span>
             <button
               onClick={() => { onSelect(new Date(today)); setOpen(false); }}
               style={{
@@ -346,6 +346,7 @@ const LogViewer = ({ canDownload, isDark }) => {
   // ── State ─────────────────────────────────────────────────────────────────
 
   const [selectedDate, setSelectedDate] = useState(today);
+  const [monthsBack,   setMonthsBack]   = useState(3);
 
   // Pod discovery: keyed by date string so we know when pods are fresh.
   // { date: string | null, pods: string[], currentPod: string | null }
@@ -398,6 +399,13 @@ const LogViewer = ({ canDownload, isDark }) => {
     },
     [get]
   );
+
+  // Load viewer settings once on mount (falls back to default if no permission)
+  useEffect(() => {
+    get(`/${pluginId}/settings`)
+      .then((res) => setMonthsBack(res.data.effectiveMonthsBack ?? 3))
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When the selected date changes, re-discover pods for that date.
   useEffect(() => {
@@ -507,6 +515,7 @@ const LogViewer = ({ canDownload, isDark }) => {
           onSelect={setSelectedDate}
           today={today}
           ui={ui}
+          monthsBack={monthsBack}
         />
 
         {/* Search box */}
