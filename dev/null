@@ -48,25 +48,52 @@ var require_server = __commonJS({
     };
     var contentTypes$1 = {};
     var logsService = "plugin::cms-logs.strapi-logs";
+    var POD_RE = /^[\w.-]+$/;
     var strapiLogs$3 = ({ strapi }) => ({
-      async getLogs(ctx) {
+      // ── Pod discovery ───────────────────────────────────────────────────────────
+      // GET /pods?date=YYYY.MM.DD
+      // Returns the list of pods that have log files for the given date (or all
+      // dates when `date` is omitted), plus the name of the current pod from the
+      // POD_NAME environment variable.
+      async getPods(ctx) {
         const { date } = ctx.query;
-        if (!date || !/^\d{4}\.\d{2}\.\d{2}$/.test(date)) {
+        if (date && !/^\d{4}\.\d{2}\.\d{2}$/.test(date)) {
           return ctx.badRequest("Invalid date format. Expected YYYY.MM.DD");
         }
         try {
-          return await strapi.service(logsService).getLogs({ date });
+          return await strapi.service(logsService).getPods({ date });
         } catch (err) {
           return ctx.internalServerError(err.message);
         }
       },
-      async downloadLog(ctx) {
-        const { date } = ctx.query;
+      // ── Log viewer ──────────────────────────────────────────────────────────────
+      // GET /logs?date=YYYY.MM.DD[&pod=<name>]
+      async getLogs(ctx) {
+        const { date, pod } = ctx.query;
         if (!date || !/^\d{4}\.\d{2}\.\d{2}$/.test(date)) {
           return ctx.badRequest("Invalid date format. Expected YYYY.MM.DD");
         }
+        if (pod && !POD_RE.test(pod)) {
+          return ctx.badRequest("Invalid pod name");
+        }
         try {
-          return await strapi.service(logsService).downloadLog({ date });
+          return await strapi.service(logsService).getLogs({ date, pod: pod || null });
+        } catch (err) {
+          return ctx.internalServerError(err.message);
+        }
+      },
+      // ── Download ────────────────────────────────────────────────────────────────
+      // GET /logs/download?date=YYYY.MM.DD[&pod=<name>]
+      async downloadLog(ctx) {
+        const { date, pod } = ctx.query;
+        if (!date || !/^\d{4}\.\d{2}\.\d{2}$/.test(date)) {
+          return ctx.badRequest("Invalid date format. Expected YYYY.MM.DD");
+        }
+        if (pod && !POD_RE.test(pod)) {
+          return ctx.badRequest("Invalid pod name");
+        }
+        try {
+          return await strapi.service(logsService).downloadLog({ date, pod: pod || null });
         } catch (err) {
           return ctx.internalServerError(err.message);
         }
@@ -82,21 +109,21 @@ var require_server = __commonJS({
         }
       },
       async saveSettings(ctx) {
-        const { logDir, maxLines } = ctx.request.body ?? {};
-        if (logDir !== void 0 && logDir !== null && typeof logDir !== "string") {
-          return ctx.badRequest("logDir must be a string");
-        }
-        if (logDir && (logDir.includes("\0") || logDir.includes("../"))) {
-          return ctx.badRequest("logDir contains invalid characters");
-        }
+        const { maxLines, monthsBack } = ctx.request.body ?? {};
         if (maxLines !== void 0 && maxLines !== null) {
           const n = parseInt(maxLines, 10);
           if (isNaN(n) || n < 100 || n > 1e4) {
-            return ctx.badRequest("maxLines must be an integer between 100 and 10000");
+            return ctx.badRequest("maxLines must be an integer between 100 and 10 000");
+          }
+        }
+        if (monthsBack !== void 0 && monthsBack !== null) {
+          const n = parseInt(monthsBack, 10);
+          if (isNaN(n) || n < 1 || n > 12) {
+            return ctx.badRequest("monthsBack must be an integer between 1 and 12");
           }
         }
         try {
-          return await strapi.service(settingsService).saveSettings({ logDir, maxLines });
+          return await strapi.service(settingsService).saveSettings({ maxLines, monthsBack });
         } catch (err) {
           return ctx.internalServerError(err.message);
         }
@@ -115,6 +142,13 @@ var require_server = __commonJS({
     var admin$1 = {
       type: "admin",
       routes: [
+        // ── Pod discovery ─────────────────────────────────────────────────────
+        {
+          method: "GET",
+          path: "/pods",
+          handler: "strapi-logs.getPods",
+          config: { policies: [perm("plugin::cms-logs.read")] }
+        },
         // ── Log viewer ────────────────────────────────────────────────────────
         {
           method: "GET",
@@ -166,17 +200,76 @@ var require_server = __commonJS({
     };
     var fs = require$$0__default.default;
     var path = require$$1__default.default;
+    var POD_FILE_RE = /^(.+?)_strapi_log_(\d{4}\.\d{2}\.\d{2})\.log$/;
     var strapiLogs$1 = ({ strapi }) => {
       const settings = () => strapi.service("plugin::cms-logs.strapi-settings");
+      const logFilename = (date, pod) => pod ? `${pod}_strapi_log_${date}.log` : `strapi_log_${date}.log`;
+      const scanPods = (logBase, date) => {
+        const root = path.join(process.cwd(), logBase);
+        if (!fs.existsSync(root))
+          return [];
+        const dirsToScan = [];
+        if (date) {
+          const year = date.split(".")[0];
+          dirsToScan.push(path.join(root, `strapi_${year}`));
+        } else {
+          try {
+            fs.readdirSync(root).forEach((entry) => {
+              if (/^strapi_\d{4}$/.test(entry)) {
+                dirsToScan.push(path.join(root, entry));
+              }
+            });
+          } catch {
+          }
+        }
+        const pods = /* @__PURE__ */ new Set();
+        for (const dir of dirsToScan) {
+          if (!fs.existsSync(dir))
+            continue;
+          try {
+            fs.readdirSync(dir).forEach((file) => {
+              const m = POD_FILE_RE.exec(file);
+              if (!m)
+                return;
+              if (date && m[2] !== date)
+                return;
+              pods.add(m[1]);
+            });
+          } catch {
+          }
+        }
+        return [...pods].sort();
+      };
       return {
-        async getLogs({ date }) {
+        /**
+         * Returns:
+         *   { pods: string[], currentPod: string | null }
+         *
+         * `pods` — sorted list of pod names that have at least one log file on the
+         *   requested date (or ever, when no date is given).
+         * `currentPod` — value of the POD_NAME env var on this process (null when
+         *   not running in a multi-pod setup).
+         */
+        async getPods({ date } = {}) {
+          const logBase = await settings().getLogDir();
+          const pods = scanPods(logBase, date || null);
+          return {
+            pods,
+            currentPod: process.env.POD_NAME || null
+          };
+        },
+        /**
+         * Read log lines for a given date, optionally scoped to a pod.
+         * Returns up to `maxLines` lines (tail-truncated when the file is larger).
+         */
+        async getLogs({ date, pod }) {
           const [logBase, maxLines] = await Promise.all([
             settings().getLogDir(),
             settings().getMaxLines()
           ]);
           const year = date.split(".")[0];
           const logDir = path.join(process.cwd(), logBase, `strapi_${year}`);
-          const logFile = path.join(logDir, `strapi_log_${date}.log`);
+          const logFile = path.join(logDir, logFilename(date, pod));
           if (!fs.existsSync(logFile)) {
             return { lines: [], exists: false, totalLines: 0, truncated: false };
           }
@@ -190,16 +283,22 @@ var require_server = __commonJS({
             truncated
           };
         },
-        async downloadLog({ date }) {
+        /**
+         * Return the raw file content for download, optionally scoped to a pod.
+         * The returned `filename` reflects the exact on-disk name so the browser
+         * saves the file with the correct name.
+         */
+        async downloadLog({ date, pod }) {
           const logBase = await settings().getLogDir();
           const year = date.split(".")[0];
           const logDir = path.join(process.cwd(), logBase, `strapi_${year}`);
-          const logFile = path.join(logDir, `strapi_log_${date}.log`);
+          const filename = logFilename(date, pod);
+          const logFile = path.join(logDir, filename);
           if (!fs.existsSync(logFile)) {
             return { content: null, exists: false, filename: null };
           }
           const content = fs.readFileSync(logFile, "utf8");
-          return { content, exists: true, filename: `strapi_log_${date}.log` };
+          return { content, exists: true, filename };
         }
       };
     };
@@ -212,26 +311,23 @@ var require_server = __commonJS({
           db = await getStore(strapi).get({ key: STORE_KEY }) || {};
         } catch {
         }
-        const envLogDir = process.env.LOG_DIR || null;
-        const defaultDir = "public/logs";
         const defaultMax = 1e3;
+        const defaultMonths = 3;
         return {
-          // Raw DB values — null means not overridden in DB
-          logDir: db.logDir ?? null,
+          // Raw DB values — null means not overridden
           maxLines: db.maxLines ?? null,
-          // What the system actually uses right now (DB → env → default)
-          effectiveLogDir: db.logDir || envLogDir || defaultDir,
+          monthsBack: db.monthsBack ?? null,
+          // Effective values the system actually uses (DB → default)
           effectiveMaxLines: db.maxLines || defaultMax,
-          // For display: where each value comes from
+          effectiveMonthsBack: db.monthsBack || defaultMonths,
+          // For the UI source badges
           sources: {
-            logDir: db.logDir ? "db" : envLogDir ? "env" : "default",
-            maxLines: db.maxLines ? "db" : "default"
-          },
-          // Pass the env value through so the UI can show it
-          envLogDir
+            maxLines: db.maxLines ? "db" : "default",
+            monthsBack: db.monthsBack ? "db" : "default"
+          }
         };
       },
-      async saveSettings({ logDir, maxLines }) {
+      async saveSettings({ maxLines, monthsBack }) {
         const store = getStore(strapi);
         let existing = {};
         try {
@@ -239,24 +335,20 @@ var require_server = __commonJS({
         } catch {
         }
         const updated = { ...existing };
-        if (logDir !== void 0) {
-          updated.logDir = logDir?.trim() || null;
-        }
         if (maxLines !== void 0) {
           const n = parseInt(maxLines, 10);
           updated.maxLines = !isNaN(n) && n >= 100 && n <= 1e4 ? n : null;
         }
+        if (monthsBack !== void 0) {
+          const n = parseInt(monthsBack, 10);
+          updated.monthsBack = !isNaN(n) && n >= 1 && n <= 12 ? n : null;
+        }
         await store.set({ key: STORE_KEY, value: updated });
         return this.getSettings();
       },
-      // Convenience helpers used by strapi-logs service
-      async getLogDir() {
-        let db = {};
-        try {
-          db = await getStore(strapi).get({ key: STORE_KEY }) || {};
-        } catch {
-        }
-        return db.logDir || process.env.LOG_DIR || "public/logs";
+      // Used by strapi-logs service — log dir comes from env/default only (no DB override)
+      getLogDir() {
+        return process.env.LOG_DIR || "logs";
       },
       async getMaxLines() {
         let db = {};
@@ -298,15 +390,15 @@ var require_server = __commonJS({
   }
 });
 
-// dist/_chunks/index-D0qMd0XN.js
-var require_index_D0qMd0XN = __commonJS({
-  "dist/_chunks/index-D0qMd0XN.js"(exports2) {
+// dist/_chunks/index-yTpbza4J.js
+var require_index_yTpbza4J = __commonJS({
+  "dist/_chunks/index-yTpbza4J.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
     var jsxRuntime = require("react/jsx-runtime");
     var react = require("react");
     var admin = require("@strapi/strapi/admin");
-    var index = require_index_gRYuq1iB();
+    var index = require_index_DOf0de8Z();
     var PINO_LEVELS = {
       10: "trace",
       20: "debug",
@@ -438,7 +530,14 @@ var require_index_D0qMd0XN = __commonJS({
       cardShadow: "none",
       filterBarBg: "#1a2540",
       filterBarBorder: "1px solid #334155",
-      rowBorder: "rgba(255,255,255,0.05)"
+      rowBorder: "rgba(255,255,255,0.05)",
+      // Pod tab strip
+      tabBarBg: "#111827",
+      tabBarBorder: "1px solid #334155",
+      activeTabBg: "rgba(73,69,255,0.10)",
+      activeTabColor: "#818cf8",
+      tabColor: "#64748b",
+      tabHoverBg: "rgba(255,255,255,0.04)"
     } : {
       // Buttons & inputs
       btnBorder: "1px solid #e2e8f0",
@@ -473,9 +572,16 @@ var require_index_D0qMd0XN = __commonJS({
       cardShadow: "0 1px 4px rgba(0,0,0,0.06)",
       filterBarBg: "#f8fafc",
       filterBarBorder: "1px solid #e2e8f0",
-      rowBorder: "rgba(255,255,255,0.05)"
+      rowBorder: "rgba(0,0,0,0.04)",
+      // Pod tab strip
+      tabBarBg: "#f1f5f9",
+      tabBarBorder: "1px solid #e2e8f0",
+      activeTabBg: "#fff",
+      activeTabColor: "#4945ff",
+      tabColor: "#64748b",
+      tabHoverBg: "rgba(0,0,0,0.03)"
     };
-    var CompactDatePicker = ({ selectedDate, onSelect, today, ui }) => {
+    var CompactDatePicker = ({ selectedDate, onSelect, today, ui, monthsBack = 3 }) => {
       const [open, setOpen] = react.useState(false);
       const [viewYear, setViewYear] = react.useState(selectedDate.getFullYear());
       const [viewMonth, setViewMonth] = react.useState(selectedDate.getMonth());
@@ -496,7 +602,7 @@ var require_index_D0qMd0XN = __commonJS({
         document.addEventListener("mousedown", onDown);
         return () => document.removeEventListener("mousedown", onDown);
       }, [open]);
-      const minMonth = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+      const minMonth = new Date(today.getFullYear(), today.getMonth() - (monthsBack - 1), 1);
       const canPrev = new Date(viewYear, viewMonth - 1, 1) >= minMonth;
       const canNext = new Date(viewYear, viewMonth + 1, 1) <= new Date(today.getFullYear(), today.getMonth(), 1);
       const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
@@ -625,7 +731,12 @@ var require_index_D0qMd0XN = __commonJS({
             justifyContent: "space-between",
             alignItems: "center"
           }, children: [
-            /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "10px", color: ui.calFooterLabel }, children: "Showing last 3 months" }),
+            /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { fontSize: "10px", color: ui.calFooterLabel }, children: [
+              "Showing last ",
+              monthsBack,
+              " month",
+              monthsBack !== 1 ? "s" : ""
+            ] }),
             /* @__PURE__ */ jsxRuntime.jsx(
               "button",
               {
@@ -650,10 +761,71 @@ var require_index_D0qMd0XN = __commonJS({
         ] })
       ] });
     };
+    var PodTabs = ({ pods, activePod, currentPod, onSelect, ui }) => {
+      const [hovered, setHovered] = react.useState(null);
+      return /* @__PURE__ */ jsxRuntime.jsx("div", { style: {
+        display: "flex",
+        alignItems: "stretch",
+        background: ui.tabBarBg,
+        borderBottom: ui.tabBarBorder,
+        overflowX: "auto",
+        // Hide scrollbar but keep scrollability for many pods
+        scrollbarWidth: "none"
+      }, children: pods.map((pod) => {
+        const isActive = pod === activePod;
+        const isCurrent = pod === currentPod;
+        return /* @__PURE__ */ jsxRuntime.jsxs(
+          "button",
+          {
+            onClick: () => onSelect(pod),
+            onMouseEnter: () => setHovered(pod),
+            onMouseLeave: () => setHovered(null),
+            style: {
+              border: "none",
+              borderBottom: isActive ? "2px solid #4945ff" : "2px solid transparent",
+              background: isActive ? ui.activeTabBg : hovered === pod ? ui.tabHoverBg : "transparent",
+              padding: "8px 16px",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontWeight: isActive ? "600" : "400",
+              color: isActive ? ui.activeTabColor : ui.tabColor,
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              whiteSpace: "nowrap",
+              transition: "background 0.1s",
+              // Offset the 2px bottom border so active tab doesn't shift layout
+              marginBottom: "-1px"
+            },
+            children: [
+              isCurrent && /* @__PURE__ */ jsxRuntime.jsx(
+                "span",
+                {
+                  title: "This pod",
+                  style: {
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    background: "#22c55e",
+                    display: "inline-block",
+                    flexShrink: 0
+                  }
+                }
+              ),
+              pod
+            ]
+          },
+          pod
+        );
+      }) });
+    };
     var LogViewer = ({ canDownload, isDark }) => {
       const ui = uiTokens(isDark);
       const today = /* @__PURE__ */ new Date();
       const [selectedDate, setSelectedDate] = react.useState(today);
+      const [monthsBack, setMonthsBack] = react.useState(3);
+      const [podData, setPodData] = react.useState({ date: null, pods: [], currentPod: null });
+      const [activePod, setActivePod] = react.useState(null);
       const [logs, setLogs] = react.useState([]);
       const [loading, setLoading] = react.useState(false);
       const [hasFile, setHasFile] = react.useState(true);
@@ -664,10 +836,11 @@ var require_index_D0qMd0XN = __commonJS({
       const logAreaRef = react.useRef(null);
       const { get } = admin.useFetchClient();
       const fetchLogs = react.useCallback(
-        async (date) => {
+        async (date, pod) => {
           setLoading(true);
           try {
-            const res = await get(`/${index.pluginId}/logs?date=${toDateStr(date)}`);
+            const podParam = pod ? `&pod=${encodeURIComponent(pod)}` : "";
+            const res = await get(`/${index.pluginId}/logs?date=${toDateStr(date)}${podParam}`);
             setLogs(res.data.lines || []);
             setHasFile(res.data.exists);
             setTotalLines(res.data.totalLines || 0);
@@ -681,9 +854,45 @@ var require_index_D0qMd0XN = __commonJS({
         },
         [get]
       );
+      const fetchPods = react.useCallback(
+        async (date) => {
+          try {
+            const res = await get(`/${index.pluginId}/pods?date=${toDateStr(date)}`);
+            const pods = res.data.pods || [];
+            const currentPod = res.data.currentPod || null;
+            setPodData({ date: toDateStr(date), pods, currentPod });
+          } catch {
+            setPodData({ date: toDateStr(date), pods: [], currentPod: null });
+          }
+        },
+        [get]
+      );
       react.useEffect(() => {
-        fetchLogs(selectedDate);
-      }, [selectedDate, fetchLogs]);
+        get(`/${index.pluginId}/settings`).then((res) => setMonthsBack(res.data.effectiveMonthsBack ?? 3)).catch(() => {
+        });
+      }, []);
+      react.useEffect(() => {
+        fetchPods(selectedDate);
+      }, [selectedDate, fetchPods]);
+      react.useEffect(() => {
+        if (podData.date !== toDateStr(selectedDate))
+          return;
+        const { pods, currentPod } = podData;
+        if (pods.length === 0) {
+          setActivePod(null);
+          return;
+        }
+        setActivePod((prev) => {
+          if (prev && pods.includes(prev))
+            return prev;
+          return currentPod && pods.includes(currentPod) ? currentPod : pods[0];
+        });
+      }, [podData]);
+      react.useEffect(() => {
+        if (podData.date !== toDateStr(selectedDate))
+          return;
+        fetchLogs(selectedDate, activePod);
+      }, [selectedDate, activePod, podData.date, fetchLogs]);
       react.useEffect(() => {
         if (!loading && logAreaRef.current && logs.length > 0) {
           logAreaRef.current.scrollTop = logAreaRef.current.scrollHeight;
@@ -692,7 +901,10 @@ var require_index_D0qMd0XN = __commonJS({
       const handleDownload = async () => {
         setDownloading(true);
         try {
-          const res = await get(`/${index.pluginId}/logs/download?date=${toDateStr(selectedDate)}`);
+          const podParam = activePod ? `&pod=${encodeURIComponent(activePod)}` : "";
+          const res = await get(
+            `/${index.pluginId}/logs/download?date=${toDateStr(selectedDate)}${podParam}`
+          );
           if (!res.data.exists || !res.data.content)
             return;
           const blob = new Blob([res.data.content], { type: "text/plain" });
@@ -712,6 +924,7 @@ var require_index_D0qMd0XN = __commonJS({
       const trimmedQuery = searchQuery.trim().toLowerCase();
       const filteredLogs = trimmedQuery ? logs.filter((raw) => raw.toLowerCase().includes(trimmedQuery)) : logs;
       const isSearching = trimmedQuery.length > 0;
+      const multiPod = podData.pods.length > 0;
       return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: {
         display: "flex",
         flexDirection: "column",
@@ -720,6 +933,16 @@ var require_index_D0qMd0XN = __commonJS({
         boxShadow: ui.cardShadow,
         overflow: "hidden"
       }, children: [
+        multiPod && /* @__PURE__ */ jsxRuntime.jsx(
+          PodTabs,
+          {
+            pods: podData.pods,
+            activePod,
+            currentPod: podData.currentPod,
+            onSelect: setActivePod,
+            ui
+          }
+        ),
         /* @__PURE__ */ jsxRuntime.jsxs("div", { style: {
           display: "flex",
           alignItems: "center",
@@ -735,7 +958,8 @@ var require_index_D0qMd0XN = __commonJS({
               selectedDate,
               onSelect: setSelectedDate,
               today,
-              ui
+              ui,
+              monthsBack
             }
           ),
           /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { position: "relative", display: "flex", alignItems: "center" }, children: [
@@ -796,7 +1020,7 @@ var require_index_D0qMd0XN = __commonJS({
             /* @__PURE__ */ jsxRuntime.jsx(
               "button",
               {
-                onClick: () => fetchLogs(selectedDate),
+                onClick: () => fetchLogs(selectedDate, activePod),
                 disabled: loading,
                 style: {
                   border: ui.btnBorder,
@@ -878,7 +1102,8 @@ var require_index_D0qMd0XN = __commonJS({
               loading && /* @__PURE__ */ jsxRuntime.jsx("div", { style: { color: "#64748b", textAlign: "center", paddingTop: "80px" }, children: "Loading logs\u2026" }),
               !loading && !hasFile && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { color: "#64748b", textAlign: "center", paddingTop: "80px" }, children: [
                 "No log file found for ",
-                toDateStr(selectedDate)
+                toDateStr(selectedDate),
+                activePod ? ` (${activePod})` : ""
               ] }),
               !loading && hasFile && logs.length === 0 && /* @__PURE__ */ jsxRuntime.jsx("div", { style: { color: "#64748b", textAlign: "center", paddingTop: "80px" }, children: "Log file is empty" }),
               !loading && hasFile && logs.length > 0 && filteredLogs.length === 0 && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { color: "#64748b", textAlign: "center", paddingTop: "80px" }, children: [
@@ -1039,22 +1264,97 @@ var require_index_D0qMd0XN = __commonJS({
   }
 });
 
-// dist/_chunks/index-DO1JGTJK.js
-var require_index_DO1JGTJK = __commonJS({
-  "dist/_chunks/index-DO1JGTJK.js"(exports2) {
+// dist/_chunks/index-6-K-CsE1.js
+var require_index_6_K_CsE1 = __commonJS({
+  "dist/_chunks/index-6-K-CsE1.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
     var jsxRuntime = require("react/jsx-runtime");
     var react = require("react");
     var admin = require("@strapi/strapi/admin");
-    var index = require_index_gRYuq1iB();
+    var index = require_index_DOf0de8Z();
+    var useDarkMode = () => {
+      const resolve = () => {
+        const t = window.localStorage.getItem("STRAPI_THEME") || "system";
+        if (t === "dark")
+          return true;
+        if (t === "light")
+          return false;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches;
+      };
+      const [isDark, setIsDark] = react.useState(resolve);
+      react.useEffect(() => {
+        const mq = window.matchMedia("(prefers-color-scheme: dark)");
+        const update = () => setIsDark(resolve());
+        let lastTheme = window.localStorage.getItem("STRAPI_THEME") || "system";
+        mq.addEventListener("change", update);
+        window.addEventListener("storage", (e) => {
+          if (e.key === "STRAPI_THEME")
+            update();
+        });
+        const pollId = window.setInterval(() => {
+          const t = window.localStorage.getItem("STRAPI_THEME") || "system";
+          if (t !== lastTheme) {
+            lastTheme = t;
+            update();
+          }
+        }, 500);
+        return () => {
+          mq.removeEventListener("change", update);
+          window.clearInterval(pollId);
+        };
+      }, []);
+      return isDark;
+    };
+    var uiTokens = (isDark) => isDark ? {
+      cardBg: "#1e293b",
+      cardBorder: "1px solid #334155",
+      labelColor: "#f1f5f9",
+      hintColor: "#94a3b8",
+      inputBg: "#0f172a",
+      inputBorder: "#334155",
+      inputColor: "#e2e8f0",
+      divider: "#334155",
+      sourceLabelColor: "#64748b",
+      sourceValueColor: "#cbd5e1",
+      resetBtnBg: "#0f172a",
+      resetBtnBorder: "1px solid #334155",
+      resetBtnColor: "#94a3b8",
+      errorText: "#f87171",
+      successText: "#4ade80",
+      failText: "#f87171",
+      loadingColor: "#64748b",
+      fetchErrorBg: "rgba(153,27,27,0.20)",
+      fetchErrorBorder: "1px solid #7f1d1d",
+      fetchErrorColor: "#fecaca"
+    } : {
+      cardBg: "#ffffff",
+      cardBorder: "1px solid #e2e8f0",
+      labelColor: "#1e293b",
+      hintColor: "#64748b",
+      inputBg: "#ffffff",
+      inputBorder: "#e2e8f0",
+      inputColor: "#1e293b",
+      divider: "#f1f5f9",
+      sourceLabelColor: "#94a3b8",
+      sourceValueColor: "#334155",
+      resetBtnBg: "#ffffff",
+      resetBtnBorder: "1px solid #e2e8f0",
+      resetBtnColor: "#64748b",
+      errorText: "#f87171",
+      successText: "#16a34a",
+      failText: "#dc2626",
+      loadingColor: "#94a3b8",
+      fetchErrorBg: "#fff3f3",
+      fetchErrorBorder: "1px solid #fecaca",
+      fetchErrorColor: "#991b1b"
+    };
     var SourceBadge = ({ source }) => {
       const styles = {
         db: { background: "#dcfce7", color: "#166534", border: "1px solid #86efac" },
-        env: { background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" },
         default: { background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1" }
       };
-      const labels = { db: "DB override", env: "Env var", default: "Default" };
+      const labels = { db: "DB override", default: "Default" };
       return /* @__PURE__ */ jsxRuntime.jsx("span", { style: {
         ...styles[source],
         fontSize: "10px",
@@ -1064,20 +1364,27 @@ var require_index_DO1JGTJK = __commonJS({
         letterSpacing: "0.03em"
       }, children: labels[source] ?? source });
     };
-    var Field = ({ label, hint, children }) => /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { marginBottom: "28px" }, children: [
-      /* @__PURE__ */ jsxRuntime.jsx("label", { style: { display: "block", fontWeight: "600", fontSize: "13px", color: "#1e293b", marginBottom: "4px" }, children: label }),
-      hint && /* @__PURE__ */ jsxRuntime.jsx("p", { style: { fontSize: "12px", color: "#64748b", margin: "0 0 8px" }, children: hint }),
+    var Field = ({ label, hint, ui, children }) => /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { marginBottom: "28px", maxWidth: "520px" }, children: [
+      /* @__PURE__ */ jsxRuntime.jsx("label", { style: { display: "block", fontWeight: "600", fontSize: "13px", color: ui.labelColor, marginBottom: "4px" }, children: label }),
+      hint && /* @__PURE__ */ jsxRuntime.jsx("p", { style: { fontSize: "12px", color: ui.hintColor, margin: "0 0 8px" }, children: hint }),
       children
     ] });
     var Settings = () => {
+      const isDark = useDarkMode();
+      const ui = uiTokens(isDark);
       const { get, put } = admin.useFetchClient();
       const [settings, setSettings] = react.useState(null);
-      const [logDir, setLogDir] = react.useState("");
       const [maxLines, setMaxLines] = react.useState("");
+      const [monthsBack, setMonthsBack] = react.useState("");
       const [loading, setLoading] = react.useState(true);
       const [saving, setSaving] = react.useState(false);
       const [saveStatus, setSaveStatus] = react.useState(null);
       const [fetchError, setFetchError] = react.useState(null);
+      const apply = (s) => {
+        setSettings(s);
+        setMaxLines(s.maxLines ? String(s.maxLines) : "");
+        setMonthsBack(s.monthsBack ? String(s.monthsBack) : "");
+      };
       const loadSettings = async () => {
         setLoading(true);
         setFetchError(null);
@@ -1090,11 +1397,6 @@ var require_index_DO1JGTJK = __commonJS({
           setLoading(false);
         }
       };
-      const apply = (s) => {
-        setSettings(s);
-        setLogDir(s.logDir ?? "");
-        setMaxLines(s.maxLines ? String(s.maxLines) : "");
-      };
       react.useEffect(() => {
         loadSettings();
       }, []);
@@ -1103,8 +1405,8 @@ var require_index_DO1JGTJK = __commonJS({
         setSaveStatus(null);
         try {
           const res = await put(`/${index.pluginId}/settings`, {
-            logDir: logDir.trim() || null,
-            maxLines: maxLines ? parseInt(maxLines, 10) : null
+            maxLines: maxLines ? parseInt(maxLines, 10) : null,
+            monthsBack: monthsBack ? parseInt(monthsBack, 10) : null
           });
           apply(res.data);
           setSaveStatus("ok");
@@ -1119,7 +1421,10 @@ var require_index_DO1JGTJK = __commonJS({
         setSaving(true);
         setSaveStatus(null);
         try {
-          const payload = { logDir: settings?.logDir ?? null, maxLines: settings?.maxLines ?? null };
+          const payload = {
+            maxLines: settings?.maxLines ?? null,
+            monthsBack: settings?.monthsBack ?? null
+          };
           payload[field] = null;
           const res = await put(`/${index.pluginId}/settings`, payload);
           apply(res.data);
@@ -1132,136 +1437,102 @@ var require_index_DO1JGTJK = __commonJS({
         }
       };
       const maxLinesNum = parseInt(maxLines, 10);
+      const monthsBackNum = parseInt(monthsBack, 10);
       const maxLinesValid = !maxLines || !isNaN(maxLinesNum) && maxLinesNum >= 100 && maxLinesNum <= 1e4;
-      const canSave = !saving && maxLinesValid;
+      const monthsBackValid = !monthsBack || !isNaN(monthsBackNum) && monthsBackNum >= 1 && monthsBackNum <= 12;
+      const canSave = !saving && maxLinesValid && monthsBackValid;
       const inputStyle = (invalid) => ({
-        width: "100%",
-        border: `1px solid ${invalid ? "#f87171" : "#e2e8f0"}`,
+        border: `1px solid ${invalid ? "#f87171" : ui.inputBorder}`,
         borderRadius: "6px",
         padding: "8px 12px",
         fontSize: "13px",
-        color: "#1e293b",
+        color: ui.inputColor,
+        background: ui.inputBg,
         outline: "none",
-        boxSizing: "border-box",
-        fontFamily: "inherit"
+        fontFamily: "inherit",
+        boxSizing: "border-box"
       });
+      const resetBtnStyle = {
+        border: ui.resetBtnBorder,
+        borderRadius: "6px",
+        padding: "8px 12px",
+        cursor: "pointer",
+        fontSize: "12px",
+        background: ui.resetBtnBg,
+        color: ui.resetBtnColor,
+        whiteSpace: "nowrap"
+      };
       if (loading) {
-        return /* @__PURE__ */ jsxRuntime.jsx("div", { style: { color: "#94a3b8", fontSize: "13px" }, children: "Loading settings\u2026" });
+        return /* @__PURE__ */ jsxRuntime.jsx("div", { style: { color: ui.loadingColor, fontSize: "13px" }, children: "Loading settings\u2026" });
       }
       if (fetchError) {
         return /* @__PURE__ */ jsxRuntime.jsx("div", { style: {
-          background: "#fff3f3",
-          border: "1px solid #fecaca",
+          background: ui.fetchErrorBg,
+          border: ui.fetchErrorBorder,
           borderRadius: "8px",
           padding: "20px",
           fontSize: "13px",
-          color: "#991b1b"
+          color: ui.fetchErrorColor
         }, children: fetchError });
       }
-      return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { maxWidth: "640px" }, children: [
+      return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { width: "100%" }, children: [
+        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { marginBottom: "24px" }, children: [
+          /* @__PURE__ */ jsxRuntime.jsx("h1", { style: { fontSize: "20px", fontWeight: "700", color: ui.labelColor, margin: "0 0 4px" }, children: "CMS Logs" }),
+          /* @__PURE__ */ jsxRuntime.jsx("p", { style: { fontSize: "13px", color: ui.hintColor, margin: 0 }, children: "Configure the CMS Logs viewer behaviour." })
+        ] }),
         /* @__PURE__ */ jsxRuntime.jsxs("div", { style: {
-          background: "#fff",
-          border: "1px solid #e2e8f0",
+          background: ui.cardBg,
+          border: ui.cardBorder,
           borderRadius: "8px",
           padding: "28px 32px"
         }, children: [
-          /* @__PURE__ */ jsxRuntime.jsxs(
-            Field,
-            {
-              label: "Log Directory Path",
-              hint: "Base folder where log files are stored. Overrides the LOG_DIR environment variable.",
-              children: [
-                /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center" }, children: [
-                  /* @__PURE__ */ jsxRuntime.jsx(
-                    "input",
-                    {
-                      type: "text",
-                      value: logDir,
-                      onChange: (e) => setLogDir(e.target.value),
-                      placeholder: settings?.envLogDir ?? "public/logs",
-                      style: { ...inputStyle(false), flex: 1 }
-                    }
-                  ),
-                  settings?.sources?.logDir === "db" && /* @__PURE__ */ jsxRuntime.jsx(
-                    "button",
-                    {
-                      onClick: () => resetField("logDir"),
-                      disabled: saving,
-                      title: "Remove override \u2014 revert to env/default",
-                      style: {
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "6px",
-                        padding: "8px 12px",
-                        cursor: "pointer",
-                        fontSize: "12px",
-                        background: "#fff",
-                        color: "#64748b",
-                        whiteSpace: "nowrap"
-                      },
-                      children: "\u2715 Reset"
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginTop: "6px" }, children: [
-                  /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "11px", color: "#94a3b8" }, children: "Currently using:" }),
-                  /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "12px", color: "#334155", fontFamily: "monospace" }, children: settings?.effectiveLogDir }),
-                  /* @__PURE__ */ jsxRuntime.jsx(SourceBadge, { source: settings?.sources?.logDir })
-                ] }),
-                settings?.envLogDir && settings?.sources?.logDir !== "env" && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { fontSize: "11px", color: "#94a3b8", marginTop: "3px" }, children: [
-                  "Env variable (LOG_DIR): ",
-                  /* @__PURE__ */ jsxRuntime.jsx("code", { style: { fontSize: "11px" }, children: settings.envLogDir })
-                ] })
-              ]
-            }
-          ),
-          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { borderTop: "1px solid #f1f5f9", margin: "0 0 24px" } }),
-          /* @__PURE__ */ jsxRuntime.jsxs(
-            Field,
-            {
-              label: "Max Lines in Viewer",
-              hint: "Maximum log lines displayed per day (100\u201310 000). The full file is always available via Download.",
-              children: [
-                /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center" }, children: [
-                  /* @__PURE__ */ jsxRuntime.jsx(
-                    "input",
-                    {
-                      type: "number",
-                      min: 100,
-                      max: 1e4,
-                      value: maxLines,
-                      onChange: (e) => setMaxLines(e.target.value),
-                      placeholder: "1000",
-                      style: { ...inputStyle(!maxLinesValid), width: "160px" }
-                    }
-                  ),
-                  settings?.sources?.maxLines === "db" && /* @__PURE__ */ jsxRuntime.jsx(
-                    "button",
-                    {
-                      onClick: () => resetField("maxLines"),
-                      disabled: saving,
-                      title: "Remove override \u2014 revert to default (1000)",
-                      style: {
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "6px",
-                        padding: "8px 12px",
-                        cursor: "pointer",
-                        fontSize: "12px",
-                        background: "#fff",
-                        color: "#64748b"
-                      },
-                      children: "\u2715 Reset"
-                    }
-                  )
-                ] }),
-                !maxLinesValid && /* @__PURE__ */ jsxRuntime.jsx("p", { style: { fontSize: "12px", color: "#f87171", margin: "4px 0 0" }, children: "Must be between 100 and 10 000." }),
-                /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginTop: "6px" }, children: [
-                  /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "11px", color: "#94a3b8" }, children: "Currently using:" }),
-                  /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "12px", color: "#334155", fontFamily: "monospace" }, children: settings?.effectiveMaxLines?.toLocaleString() }),
-                  /* @__PURE__ */ jsxRuntime.jsx(SourceBadge, { source: settings?.sources?.maxLines })
-                ] })
-              ]
-            }
-          ),
+          /* @__PURE__ */ jsxRuntime.jsxs(Field, { label: "Months Available in Date Picker", hint: "How many past months are selectable in the log viewer calendar (1\u201312).", ui, children: [
+            /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center" }, children: [
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "input",
+                {
+                  type: "number",
+                  min: 1,
+                  max: 12,
+                  value: monthsBack,
+                  onChange: (e) => setMonthsBack(e.target.value),
+                  placeholder: "3",
+                  style: { ...inputStyle(!monthsBackValid), width: "120px" }
+                }
+              ),
+              settings?.sources?.monthsBack === "db" && /* @__PURE__ */ jsxRuntime.jsx("button", { onClick: () => resetField("monthsBack"), disabled: saving, title: "Revert to default (3)", style: resetBtnStyle, children: "\u2715 Reset" })
+            ] }),
+            !monthsBackValid && /* @__PURE__ */ jsxRuntime.jsx("p", { style: { fontSize: "12px", color: ui.errorText, margin: "4px 0 0" }, children: "Must be between 1 and 12." }),
+            /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginTop: "6px" }, children: [
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "11px", color: ui.sourceLabelColor }, children: "Currently using:" }),
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "12px", color: ui.sourceValueColor, fontFamily: "monospace" }, children: settings?.effectiveMonthsBack }),
+              /* @__PURE__ */ jsxRuntime.jsx(SourceBadge, { source: settings?.sources?.monthsBack })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { borderTop: `1px solid ${ui.divider}`, margin: "0 0 24px" } }),
+          /* @__PURE__ */ jsxRuntime.jsxs(Field, { label: "Max Lines in Viewer", hint: "Maximum log lines displayed per day (100\u201310 000). The full file is always available via Download.", ui, children: [
+            /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center" }, children: [
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "input",
+                {
+                  type: "number",
+                  min: 100,
+                  max: 1e4,
+                  value: maxLines,
+                  onChange: (e) => setMaxLines(e.target.value),
+                  placeholder: "1000",
+                  style: { ...inputStyle(!maxLinesValid), width: "160px" }
+                }
+              ),
+              settings?.sources?.maxLines === "db" && /* @__PURE__ */ jsxRuntime.jsx("button", { onClick: () => resetField("maxLines"), disabled: saving, title: "Revert to default (1000)", style: resetBtnStyle, children: "\u2715 Reset" })
+            ] }),
+            !maxLinesValid && /* @__PURE__ */ jsxRuntime.jsx("p", { style: { fontSize: "12px", color: ui.errorText, margin: "4px 0 0" }, children: "Must be between 100 and 10 000." }),
+            /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginTop: "6px" }, children: [
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "11px", color: ui.sourceLabelColor }, children: "Currently using:" }),
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "12px", color: ui.sourceValueColor, fontFamily: "monospace" }, children: settings?.effectiveMaxLines?.toLocaleString() }),
+              /* @__PURE__ */ jsxRuntime.jsx(SourceBadge, { source: settings?.sources?.maxLines })
+            ] })
+          ] }),
           /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "12px", marginTop: "8px" }, children: [
             /* @__PURE__ */ jsxRuntime.jsx(
               "button",
@@ -1269,7 +1540,7 @@ var require_index_DO1JGTJK = __commonJS({
                 onClick: handleSave,
                 disabled: !canSave,
                 style: {
-                  background: canSave ? "#4945ff" : "#a5b4fc",
+                  background: canSave ? "#4945ff" : isDark ? "#3730a3" : "#a5b4fc",
                   color: "#fff",
                   border: "none",
                   borderRadius: "6px",
@@ -1281,29 +1552,8 @@ var require_index_DO1JGTJK = __commonJS({
                 children: saving ? "Saving\u2026" : "Save Settings"
               }
             ),
-            saveStatus === "ok" && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "13px", color: "#16a34a" }, children: "\u2713 Settings saved" }),
-            saveStatus === "error" && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "13px", color: "#dc2626" }, children: "\u2717 Save failed \u2014 please try again" })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: {
-          marginTop: "16px",
-          padding: "14px 16px",
-          background: "#f8fafc",
-          border: "1px solid #e2e8f0",
-          borderRadius: "8px"
-        }, children: [
-          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "6px" }, children: "Setting priority (highest \u2192 lowest)" }),
-          /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center", fontSize: "12px", color: "#64748b" }, children: [
-            /* @__PURE__ */ jsxRuntime.jsx(SourceBadge, { source: "db" }),
-            /* @__PURE__ */ jsxRuntime.jsx("span", { children: "\u2192" }),
-            /* @__PURE__ */ jsxRuntime.jsx(SourceBadge, { source: "env" }),
-            /* @__PURE__ */ jsxRuntime.jsx("span", { children: "\u2192" }),
-            /* @__PURE__ */ jsxRuntime.jsx(SourceBadge, { source: "default" })
-          ] }),
-          /* @__PURE__ */ jsxRuntime.jsxs("p", { style: { fontSize: "11px", color: "#94a3b8", margin: "8px 0 0" }, children: [
-            "Values saved here take precedence over the ",
-            /* @__PURE__ */ jsxRuntime.jsx("code", { children: "LOG_DIR" }),
-            " env variable. Clear a field and save to fall back to the lower-priority source."
+            saveStatus === "ok" && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "13px", color: ui.successText }, children: "\u2713 Settings saved" }),
+            saveStatus === "error" && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: "13px", color: ui.failText }, children: "\u2717 Save failed \u2014 please try again" })
           ] })
         ] })
       ] });
@@ -1324,9 +1574,9 @@ var require_en_B5dWOzJf = __commonJS({
   }
 });
 
-// dist/_chunks/index-gRYuq1iB.js
-var require_index_gRYuq1iB = __commonJS({
-  "dist/_chunks/index-gRYuq1iB.js"(exports2) {
+// dist/_chunks/index-DOf0de8Z.js
+var require_index_DOf0de8Z = __commonJS({
+  "dist/_chunks/index-DOf0de8Z.js"(exports2) {
     "use strict";
     var react = require("react");
     var jsxRuntime = require("react/jsx-runtime");
@@ -3349,7 +3599,7 @@ var require_index_gRYuq1iB = __commonJS({
           // Hides the sidebar link entirely for roles that lack the read permission.
           permissions: [{ action: "plugin::cms-logs.read", subject: null }],
           Component: async () => {
-            const component = await Promise.resolve().then(() => require_index_D0qMd0XN());
+            const component = await Promise.resolve().then(() => require_index_yTpbza4J());
             return component;
           }
         });
@@ -3360,7 +3610,7 @@ var require_index_gRYuq1iB = __commonJS({
             id: `${pluginId}.settings`,
             to: pluginId,
             // Strapi prepends /settings/ — resolves to /settings/cms-logs
-            Component: async () => Promise.resolve().then(() => require_index_DO1JGTJK()),
+            Component: async () => Promise.resolve().then(() => require_index_6_K_CsE1()),
             permissions: [{ action: "plugin::cms-logs.configure", subject: null }]
           }
         );
@@ -3394,7 +3644,7 @@ var require_index_gRYuq1iB = __commonJS({
 var require_admin = __commonJS({
   "dist/admin/index.js"(exports2, module2) {
     "use strict";
-    var index = require_index_gRYuq1iB();
+    var index = require_index_DOf0de8Z();
     module2.exports = index.index;
   }
 });
